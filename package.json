@@ -1,0 +1,23 @@
+{
+  "name": "lysergic",
+  "version": "0.1.0",
+  "description": "Synaptic's engine optimizer",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cazala/lysergic.git"
+  },
+  "keywords": [
+    "synaptic",
+    "optimizer"
+  ],
+  "author": "Juan Cazala",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/cazala/lysergic/issues"
+  },
+  "homepage": "https://github.com/cazala/lysergic#readme"
+}
