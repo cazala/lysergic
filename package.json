@@ -23,7 +23,9 @@
   "scripts": {
     "clean": "rimraf dist && rimraf browser",
     "build": "npm run clean && tsc",
-    "build:browser": "npm run build && rollup dist/index.js --format umd --name \"Lysergic\" --output browser/index.js --sourcemap"
+    "build:browser": "npm run build && rollup dist/index.js --format umd --name \"Lysergic\" --output browser/index.js --sourcemap",
+    "preversion": "npm build",
+    "postversion": "git push && git push --tags && npm publish"
   },
   "author": "Juan Cazala <cazala@mail.sfsu.edu> (http://caza.la/)",
   "license": "MIT",
