@@ -23,7 +23,6 @@
   "scripts": {
     "clean": "rimraf dist && rimraf browser",
     "build": "npm run clean && tsc",
-    "build:browser": "npm run build && rollup dist/index.js --format umd --name \"Lysergic\" --output browser/index.js --sourcemap",
     "preversion": "npm build",
     "postversion": "git push && git push --tags && npm publish"
   },
@@ -31,7 +30,6 @@
   "license": "MIT",
   "devDependencies": {
     "rimraf": "^2.6.1",
-    "rollup": "^0.41.6",
     "tslint": "^3.15.1",
     "typescript": "^2.3.2"
   }
