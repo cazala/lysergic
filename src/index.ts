@@ -31,7 +31,9 @@ export enum ActivationTypes {
   RELU,
   MAX_POOLING,
   DROPOUT,
-  IDENTITY
+  IDENTITY,
+  INVERSE_IDENTITY,
+  EXP
 }
 
 // -- Status Types
