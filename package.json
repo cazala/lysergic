@@ -17,15 +17,17 @@
   },
   "homepage": "https://github.com/cazala/lysergic#readme",
   "scripts": {
-    "clean": "rimraf dist",
-    "build": "npm run clean && tsc"
+    "clean": "rimraf dist && rimraf browser",
+    "build": "npm run clean && tsc",
+    "build:browser": "npm run build && rollup dist/index.js --format umd --name \"Lysergic\" --output browser/index.js --sourcemap"
   },
   "author": "Juan Cazala <cazala@mail.sfsu.edu> (http://caza.la/)",
   "license": "MIT",
   "typings": "dist/index.d.ts",
   "devDependencies": {
+    "rimraf": "^2.6.1",
+    "rollup": "^0.41.6",
     "tslint": "^3.15.1",
-    "typescript": "^2.3.2",
-    "rimraf": "^2.6.1"
+    "typescript": "^2.3.2"
   }
 }

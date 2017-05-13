@@ -52,6 +52,7 @@ export default class Lysergic {
 
   static ActivationTypes = ActivationTypes;
   static StatusTypes = StatusTypes;
+  static CostTypes = CostTypes;
   static RandomGenerator = () => Math.random() * 2 - 1
 
   state: number[] = [];

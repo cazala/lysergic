@@ -1,9 +1,7 @@
-declare var console;
-
 // This is my attepmt of translating this paper http://www.overcomplete.net/papers/nn2012.pdf to javascript,
 // trying to keep the code as close as posible to the equations and as verbose as possible.
 
-import Engine, { ActivationTypes, CostTypes, StatusTypes } from '.';
+import Engine, { ActivationTypes, CostTypes, StatusTypes } from './index';
 import { DocumentNode, LayerNode, UnitNode, FunctionNode, HeapReferenceNode } from './nodes';
 import {
   document,
@@ -514,6 +512,7 @@ export default class ASM implements Backend {
         }
         return x;
     }
+    return 0;
   }
 
   buildBody(statements: Statement[][]): string {
@@ -573,8 +572,6 @@ export default class ASM implements Backend {
         this.view[variable.id] = variable.initialValue;
       }
     });
-
-    console.log(this.document.toString());
 
     const source = `"use asm";
 var H = new stdlib.Float64Array(heap);
