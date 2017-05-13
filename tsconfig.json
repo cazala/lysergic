@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es5",
+    "diagnostics": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "inlineSourceMap": false,
+    "inlineSources": false,
+    "sourceMap": true,
+    "declaration": true,
+    "outDir": "dist",
+    "moduleResolution": "node",
+    "stripInternal": true,
+    "pretty": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitReturns": true,
+    "removeComments": true,
+    "noUnusedLocals": true,
+    "types": [],
+    "lib": [
+      "es5",
+      "es2015.promise"
+    ]
+  },
+  "exclude": [
+    "node_modules",
+    "test",
+    "static",
+    "dist"
+  ],
+  "include": [
+    "src/**/*"
+  ]
+}

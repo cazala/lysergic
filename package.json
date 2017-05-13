@@ -1,23 +1,31 @@
 {
   "name": "lysergic",
   "version": "0.1.0",
-  "description": "Synaptic's engine optimizer",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
+  "description": "Synaptic's engine",
+  "main": "dist/index.js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cazala/lysergic.git"
   },
   "keywords": [
     "synaptic",
-    "optimizer"
+    "lysergic",
+    "engine"
   ],
-  "author": "Juan Cazala",
-  "license": "MIT",
   "bugs": {
     "url": "https://github.com/cazala/lysergic/issues"
   },
-  "homepage": "https://github.com/cazala/lysergic#readme"
+  "homepage": "https://github.com/cazala/lysergic#readme",
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && tsc"
+  },
+  "author": "Juan Cazala <cazala@mail.sfsu.edu> (http://caza.la/)",
+  "license": "MIT",
+  "typings": "dist/index.d.ts",
+  "devDependencies": {
+    "tslint": "^3.15.1",
+    "typescript": "^2.3.2",
+    "rimraf": "^2.6.1"
+  }
 }
