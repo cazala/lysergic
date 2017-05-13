@@ -3,6 +3,10 @@
   "version": "0.1.1",
   "description": "Synaptic's engine",
   "main": "dist/index.js",
+  "typings": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cazala/lysergic.git"
@@ -23,7 +27,6 @@
   },
   "author": "Juan Cazala <cazala@mail.sfsu.edu> (http://caza.la/)",
   "license": "MIT",
-  "typings": "dist/index.d.ts",
   "devDependencies": {
     "rimraf": "^2.6.1",
     "rollup": "^0.41.6",
