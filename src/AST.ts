@@ -214,6 +214,14 @@ export default class ASM implements Backend {
         this.buildActivationStatement(asm`${activationJ} = ${stateJ}`);
         statement(assign(activationJ, stateJ));
         break;
+      case ActivationTypes.EXP:
+        this.buildActivationStatement(asm`${activationJ} = exp(${stateJ})`);
+        statement(assign(activationJ, exp(stateJ)));
+        break;
+      case ActivationTypes.INVERSE_IDENTITY:
+        this.buildActivationStatement(asm`${activationJ} = 1 / ${stateJ}`);
+        statement(assign(activationJ, div(number(1), stateJ)));
+        break;
       /*case ActivationTypes.MAX_POOLING:
         const inputUnit = this.engine.inputsOf[unit][0]
         const gatedUnit = this.engine.gatedBy[unit][0]
