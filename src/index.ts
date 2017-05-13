@@ -97,7 +97,7 @@ export default class Lysergic {
     }
   }
 
-  addUnit(activationFunction = ActivationTypes.LOGISTIC_SIGMOID) {
+  addUnit(activationFunction = ActivationTypes.LOGISTIC_SIGMOID, biased: boolean = true) {
     const unit = this.size;
     this.state[unit] = this.random();
     this.weight[unit] = [];
@@ -126,7 +126,7 @@ export default class Lysergic {
     this.size++;
 
     // if using bias, connect bias unit to newly created unit
-    if (this.biasUnit != null) {
+    if (biased && this.biasUnit != null) {
       this.addConnection(this.biasUnit, unit);
     }
 
@@ -171,13 +171,13 @@ export default class Lysergic {
     this.track(gater);
   }
 
-  addLayer(size = 0, activationFunction?: ActivationTypes) {
+  addLayer(size = 0, activationFunction?: ActivationTypes, biased = true) {
     if (this.status === StatusTypes.REVERSE_INIT) {
       throw new Error('You can\'t add layers during REVERSE_INIT phase!');
     }
     const layer: number[] = [];
     for (let i = 0; i < size; i++) {
-      const unit = this.addUnit(activationFunction);
+      const unit = this.addUnit(activationFunction, biased);
       layer.push(unit);
     }
     this.layers.push(layer);
