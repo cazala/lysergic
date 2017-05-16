@@ -2,7 +2,7 @@
 // trying to keep the code as close as posible to the equations and as verbose as possible.
 
 import Engine, { ActivationTypes, CostTypes, StatusTypes } from './index';
-import { DocumentNode, LayerNode, UnitNode, FunctionNode, HeapReferenceNode } from './nodes';
+import { DocumentNode, LayerNode, UnitNode, FunctionNode, HeapReferenceNode } from './ast/nodes';
 import {
   document,
   assign,
@@ -21,7 +21,7 @@ import {
   layer,
   conditional,
   gt
-} from './operations';
+} from './ast/operations';
 
 
 export interface Dictionary<T> {

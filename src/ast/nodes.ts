@@ -1,17 +1,65 @@
-import { Node, childrenRef, indent } from './helpers';
+import { childrenRef, indent } from './helpers';
 
 export type BinaryOperator = '+' | '-' | '/' | '*' | '=' | '*=' | '/=' | '+=' | '-=' | '^' | '>' | '<' | '>=' | '<=' | '=='
 export type UnaryOperator = '-' | 'exp' | 'rand'
 
-export class ExpressionNode extends Node { }
+export abstract class Node {
+  children: Node[] = [];
 
-export class ParametersNode extends Node {
-  children: ExpressionNode[];
+  hasParenthesis: boolean = false;
 
-  toString() {
-    return `(${this.children.join(', ')})`;
+  nameMapping: { [i: number]: string };
+
+  originalText: string;
+
+  constructor() {
+    let originalToString = this.toString;
+
+    this.toString = () => {
+      if (this.hasParenthesis)
+        return '(' + originalToString.apply(this) + ')';
+      return originalToString.apply(this);
+    };
+  }
+
+  parent: Node;
+
+  addNode(node: Node) {
+    if (!node) return;
+    node.parent = this;
+    this.children.push(node);
+  }
+
+  toString(): string {
+    if (this.originalText) {
+      return this.originalText;
+    }
+    return this.children.map(x => x.toString()).join('\n');
+  }
+
+  get value(): string {
+    return null;
+  }
+
+  inspect() {
+    let childrenInspected = this.children.map((x, i) => {
+      let name = this.nameMapping && this.nameMapping[i];
+      if (name) name = name + ': ';
+      else name = '';
+
+      return name + (!x ? 'null' : x.inspect());
+    }).join('\n');
+
+    return (this as any).constructor.name +
+      (this.value ? ' value=' + this.value : '')
+      + ' [' + (
+        childrenInspected ? '\n' + indent(childrenInspected) + '\n'
+          : ''
+      ) + ']';
   }
 }
+
+export class ExpressionNode extends Node { }
 
 export class DocumentNode extends Node {
   children: ExpressionNode[];
@@ -20,12 +68,13 @@ export class DocumentNode extends Node {
   }
 }
 
-// export class HeapDeclarationNode extends ExpressionNode {
-//   length: number
-//   toString() {
-//     return `var H = new Float64Array(${this.length})`
-//   }
-// }
+export class ParametersNode extends Node {
+  children: ExpressionNode[];
+
+  toString() {
+    return `(${this.children.join(', ')})`;
+  }
+}
 
 export class FunctionNode extends ExpressionNode {
   name: string;
@@ -73,28 +122,6 @@ export class HeapReferenceNode extends ExpressionNode {
     return `H[${this.position}]`;
   }
 }
-
-// export class VariableReferenceNode extends ExpressionNode {
-//   constructor(public variableName: string) {
-//     super()
-//   }
-
-//   toString() {
-//     return this.variableName
-//   }
-// }
-
-// export class FunctionCallNode extends ExpressionNode {
-//   @childrenRef(0)
-//   fn: ExpressionNode
-
-//   @childrenRef(1)
-//   fnParameters: ParametersNode
-
-//   toString() {
-//     return this.fn.toString() + this.fnParameters.toString()
-//   }
-// }
 
 export class TernaryExpressionNode extends ExpressionNode {
   @childrenRef(0)
