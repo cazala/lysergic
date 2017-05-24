@@ -10,7 +10,9 @@ import {
   BinaryExpressionNode,
   BinaryOperator,
   UnaryExpressionNode,
-  UnaryOperator
+  UnaryOperator,
+  ParametersNode,
+  ParameterNode
 } from './nodes';
 
 export function heap(position: number) {
@@ -132,9 +134,15 @@ export function unaryOp(op: UnaryOperator, rhs: ExpressionNode) {
   return node;
 }
 
-export function func(name: string) {
+export function func(name: string, ...parameters: string[]) {
   let node = new FunctionNode();
   node.name = name;
+  return node;
+}
+
+export function params(...parameters: string[]) {
+  let node = new ParametersNode();
+  node.children = parameters.map(paramName => new ParameterNode(paramName));
   return node;
 }
 

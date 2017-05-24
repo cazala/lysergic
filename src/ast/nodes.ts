@@ -68,14 +68,6 @@ export class DocumentNode extends Node {
   }
 }
 
-export class ParametersNode extends Node {
-  children: ExpressionNode[];
-
-  toString() {
-    return `(${this.children.join(', ')})`;
-  }
-}
-
 export class FunctionNode extends ExpressionNode {
   name: string;
 
@@ -90,6 +82,25 @@ export class FunctionNode extends ExpressionNode {
       + '\n'
       + indent(this.children.map(x => x + ';').join('\n'))
       + '\n}';
+  }
+}
+
+export class ParametersNode extends Node {
+  children: ParameterNode[];
+
+  toString() {
+    return `(${this.children.join(', ')})`;
+  }
+}
+
+
+export class ParameterNode extends ExpressionNode {
+  constructor(public name: string) {
+    super();
+  }
+
+  toString() {
+    return this.name;
   }
 }
 
