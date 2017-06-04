@@ -32,6 +32,8 @@ export enum ActivationTypes {
   MAX_POOLING,
   DROPOUT,
   IDENTITY,
+  SOFTMAX,
+  LINEAL,
   INVERSE_IDENTITY,
   EXP
 }
