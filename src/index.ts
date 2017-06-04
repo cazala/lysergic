@@ -935,8 +935,9 @@ export default class Lysergic {
     } else if (key in parent) { // not all the properties in the engine are in the heap (ie. the state of the input units)
       const variables = this.variables;
       const length = parent[key].length;
-      parent[key] = new Proxy(this.memory, {
-        get(memory: Float64Array, prop: string) {
+      let that = this;
+      parent[key] = new Proxy({}, {
+        get(obj, prop: string) {
           if (prop === 'length') {
             return length;
           }
@@ -946,7 +947,7 @@ export default class Lysergic {
               for (let index = 0; index < length; index++) {
                 const variable = variables[`${id}[${index}]`];
                 if (variable) {
-                  value.push(memory[variable.id]);
+                  value.push(that.memory[variable.id]);
                 } else {
                   value.push(0);
                 }
@@ -956,14 +957,14 @@ export default class Lysergic {
           }
           const variable: Variable = variables[`${id}[${prop}]`];
           if (variable) {
-            return memory[variable.id];
+            return that.memory[variable.id];
           }
           return 0;
         },
-        set(memory: Float64Array, prop: string, newValue: number) {
+        set(obj, prop: string, newValue: number) {
           const variable: Variable = variables[`${id}[${prop}]`];
           if (variable) {
-            memory[variable.id] = newValue;
+            that.memory[variable.id] = newValue;
           }
         }
       });
