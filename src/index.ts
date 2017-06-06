@@ -500,11 +500,11 @@ export default class Lysergic {
     let activationFunction: FunctionNode = this.AST.children.reduce<FunctionNode>((found, node) => node instanceof FunctionNode && node.name === 'activate' ? node : found, null);
 
     // add layer node to AST if it doesn't exist
-    let hasLayer = activationFunction.children.some(node => node instanceof LayerNode && node.id === layerJ);
+    let hasLayer = activationFunction.body.children.some(node => node instanceof LayerNode && node.id === layerJ);
     if (!hasLayer) {
-      activationFunction.addNode(layer(layerJ));
+      activationFunction.body.addNode(layer(layerJ));
     }
-    let layerNode: LayerNode = activationFunction.children.reduce<LayerNode>((found, node) => node instanceof LayerNode && node.id === layerJ ? node : found, null);
+    let layerNode: LayerNode = activationFunction.body.children.reduce<LayerNode>((found, node) => node instanceof LayerNode && node.id === layerJ ? node : found, null);
 
     // add unit node to AST if it doesn't exist
     let hasUnit = layerNode.children.some(node => node instanceof UnitNode && node.id === j);
@@ -721,11 +721,11 @@ export default class Lysergic {
     let propagationFunction: FunctionNode = this.AST.children.reduce<FunctionNode>((found, node) => node instanceof FunctionNode && node.name === 'propagate' ? node : found, null);
 
     // add layer node if it doesn't exist
-    let hasLayer = propagationFunction.children.some(node => node instanceof LayerNode && node.id === layerJ);
+    let hasLayer = propagationFunction.body.children.some(node => node instanceof LayerNode && node.id === layerJ);
     if (!hasLayer) {
-      propagationFunction.addNode(layer(layerJ));
+      propagationFunction.body.addNode(layer(layerJ));
     }
-    let layerNode: LayerNode = propagationFunction.children.reduce<LayerNode>((found, node) => node instanceof LayerNode && node.id === layerJ ? node : found, null);
+    let layerNode: LayerNode = propagationFunction.body.children.reduce<LayerNode>((found, node) => node instanceof LayerNode && node.id === layerJ ? node : found, null);
 
     // add unit node if it doesn't exist
     let hasUnit = layerNode.children.some(node => node instanceof UnitNode && node.id === j);
@@ -933,7 +933,7 @@ export default class Lysergic {
         this.proxyDimensions(`${id}[${propKey}]`, dimensions - 1, parent[key], propKey.toString());
       }
     } else if (key in parent) { // not all the properties in the engine are in the heap (ie. the state of the input units)
-      const variables = this.variables;
+
       const length = parent[key].length;
       let that = this;
       parent[key] = new Proxy({}, {
@@ -945,7 +945,7 @@ export default class Lysergic {
             return () => {
               let value: number[] = [];
               for (let index = 0; index < length; index++) {
-                const variable = variables[`${id}[${index}]`];
+                const variable = that.variables[`${id}[${index}]`];
                 if (variable) {
                   value.push(that.memory[variable.id]);
                 } else {
@@ -955,14 +955,14 @@ export default class Lysergic {
               return value;
             };
           }
-          const variable: Variable = variables[`${id}[${prop}]`];
+          const variable: Variable = that.variables[`${id}[${prop}]`];
           if (variable) {
             return that.memory[variable.id];
           }
           return 0;
         },
         set(obj, prop: string, newValue: number) {
-          const variable: Variable = variables[`${id}[${prop}]`];
+          const variable: Variable = that.variables[`${id}[${prop}]`];
           if (variable) {
             that.memory[variable.id] = newValue;
           }

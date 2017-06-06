@@ -12,7 +12,8 @@ import {
   UnaryExpressionNode,
   UnaryOperator,
   ParametersNode,
-  ParameterNode
+  ParameterNode,
+  BlockNode
 } from './nodes';
 
 export function heap(position: number) {
@@ -137,6 +138,7 @@ export function unaryOp(op: UnaryOperator, rhs: ExpressionNode) {
 export function func(name: string, ...parameters: string[]) {
   let node = new FunctionNode();
   node.name = name;
+  node.body = new BlockNode();
   return node;
 }
 

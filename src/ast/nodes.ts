@@ -75,13 +75,21 @@ export class FunctionNode extends ExpressionNode {
   parameters: ParametersNode;
 
   @childrenRef(1)
-  body: LayerNode;
+  body: BlockNode;
 
   toString() {
     return `function ${this.name}() {`
       + '\n'
-      + indent(this.children.map(x => x + ';').join('\n'))
+      + indent(this.body.toString())
       + '\n}';
+  }
+}
+
+export class BlockNode extends Node {
+  name: string;
+  children: ExpressionNode[];
+  toString() {
+    return `{\n` + indent(this.children.map(x => x + ';').join('\n')) + `\n};`;
   }
 }
 
