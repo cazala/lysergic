@@ -1,6 +1,6 @@
 declare var Proxy;
 import { DocumentNode, HeapReferenceNode, FunctionNode, LayerNode, UnitNode } from "./ast/nodes";
-import { func, layer, unit, assignMul, mul, assign, number, assignSum, div, sum, exp, neg, sub, pow, conditional, gt, document } from "./ast/operations";
+import { func, layer, unit, assignMul, mul, assign, number, assignSum, div, sum, exp, neg, sub, pow, conditional, gt, document, ln, abs } from "./ast/operations";
 
 export interface Dictionary<T> {
   [key: string]: T;
@@ -45,10 +45,15 @@ export enum ActivationTypes {
   MAX_POOLING,
   DROPOUT,
   IDENTITY,
+  // derivative 0
   SOFTMAX,
-  LINEAL,
+  // derivative 1
   INVERSE_IDENTITY,
-  EXP
+  EXP,
+  SOFTPLUS,
+  SOFTSIGN,
+  GAUSSIAN,
+  RELU_PLUSONE
 }
 
 // -- Status Types
@@ -59,7 +64,8 @@ export enum StatusTypes {
   REVERSE_INIT,
   ACTIVATING,
   PROPAGATING,
-  TRAINING
+  TRAINING,
+  BUILDING
 }
 
 
@@ -497,21 +503,25 @@ export default class Lysergic {
 
   private buildActivation(j: number, layerJ: number): Variable {
     // grab activation function node
-    let activationFunction: FunctionNode = this.AST.children.reduce<FunctionNode>((found, node) => node instanceof FunctionNode && node.name === 'activate' ? node : found, null);
+    let activationFunction: FunctionNode = this.AST.children.find(node =>
+      node instanceof FunctionNode && node.name === 'activate'
+    ) as FunctionNode;
 
-    // add layer node to AST if it doesn't exist
-    let hasLayer = activationFunction.body.children.some(node => node instanceof LayerNode && node.id === layerJ);
-    if (!hasLayer) {
-      activationFunction.body.addNode(layer(layerJ));
-    }
-    let layerNode: LayerNode = activationFunction.body.children.reduce<LayerNode>((found, node) => node instanceof LayerNode && node.id === layerJ ? node : found, null);
+    let layerNode: LayerNode = activationFunction.body.children.find($ => $ instanceof LayerNode && $.id === layerJ) as LayerNode;
 
-    // add unit node to AST if it doesn't exist
-    let hasUnit = layerNode.children.some(node => node instanceof UnitNode && node.id === j);
-    if (!hasUnit) {
-      layerNode.addNode(unit(j));
+    if (!layerNode) {
+      // add layer node to AST if it doesn't exist
+      layerNode = layer(layerJ);
+      activationFunction.body.addNode(layerNode);
     }
-    const unitNode: UnitNode = layerNode.children.reduce<UnitNode>((found, node) => node instanceof UnitNode && node.id === j ? node : found, null);
+
+    let unitNode: UnitNode = layerNode.children.find($ => $ instanceof UnitNode && $.id === j) as UnitNode;
+
+    if (!unitNode) {
+      // add unit node to AST if it doesn't exist
+      unitNode = unit(j);
+      layerNode.addNode(unitNode);
+    }
 
     // helper to add a statement to the unit node
     const statement = unitNode.addNode.bind(unitNode);
@@ -574,6 +584,7 @@ export default class Lysergic {
         statement(assign(activationJ, div(number(1), sum(number(1), exp(neg(stateJ))))));
         statement(assign(derivativeJ, mul(activationJ, sub(number(1), activationJ))));
         break;
+
       case ActivationTypes.TANH:
         const eP = this.alloc('eP', null);
         const eN = this.alloc('eN', null);
@@ -582,18 +593,50 @@ export default class Lysergic {
         statement(assign(activationJ, div(sub(eP, eN), sum(eP, eN))));
         statement(assign(derivativeJ, sub(number(1), pow(activationJ, number(2)))));
         break;
+
+      case ActivationTypes.RELU_PLUSONE:
+        statement(assign(activationJ, sum(number(1), conditional(gt(stateJ, number(0)), stateJ, number(0)))));
+        statement(assign(derivativeJ, conditional(gt(stateJ, number(0)), number(1), number(0))));
+        break;
+
       case ActivationTypes.RELU:
         statement(assign(activationJ, conditional(gt(stateJ, number(0)), stateJ, number(0))));
+        statement(assign(derivativeJ, conditional(gt(stateJ, number(0)), number(1), number(0))));
         break;
+
+      case ActivationTypes.SOFTPLUS:
+        statement(assign(activationJ, ln(sum(number(1), exp(stateJ)))));
+        statement(assign(derivativeJ, div(number(1), sum(number(1), exp(neg(stateJ))))));
+        break;
+
+      case ActivationTypes.SOFTSIGN:
+        const aux = this.alloc('eP', null);
+        // http://www.iro.umontreal.ca/~lisa/publications2/index.php/attachments/single/205
+        // http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
+        statement(assign(aux, sum(number(1), abs(stateJ)))); // aux = 1 + Math.abs(x)
+        statement(assign(activationJ, div(stateJ, aux))); // activation = x / (1 + Math.abs(x));
+        statement(assign(derivativeJ, div(number(1), mul(aux, aux)))); // derivative 1 / (aux * aux);
+        break;
+
       case ActivationTypes.EXP:
         statement(assign(activationJ, exp(stateJ)));
+        statement(assign(derivativeJ, activationJ));
         break;
+
+      case ActivationTypes.GAUSSIAN:
+        statement(assign(activationJ, exp(neg(mul(stateJ, stateJ)))));
+        statement(assign(derivativeJ, mul(mul(number(-2), stateJ), activationJ)));
+        break;
+
       case ActivationTypes.INVERSE_IDENTITY:
         statement(assign(activationJ, div(number(1), stateJ)));
+        statement(assign(derivativeJ, div(number(-1), mul(stateJ, stateJ))));
         break;
+
       case ActivationTypes.IDENTITY:
       default:
         statement(assign(activationJ, stateJ));
+        statement(assign(derivativeJ, number(1)));
         break;
       /*case ActivationTypes.MAX_POOLING:
         const inputUnit = this.inputsOf[unit][0]
@@ -716,23 +759,25 @@ export default class Lysergic {
   }
 
   private buildPropagation(j: number, layerJ: number, targetJ?: Variable) {
+    let propagationFunction: FunctionNode = this.AST.children.find(node =>
+      node instanceof FunctionNode && node.name === 'propagate'
+    ) as FunctionNode;
 
-    // grab propagation function node
-    let propagationFunction: FunctionNode = this.AST.children.reduce<FunctionNode>((found, node) => node instanceof FunctionNode && node.name === 'propagate' ? node : found, null);
+    let layerNode: LayerNode = propagationFunction.body.children.find($ => $ instanceof LayerNode && $.id === layerJ) as LayerNode;
 
-    // add layer node if it doesn't exist
-    let hasLayer = propagationFunction.body.children.some(node => node instanceof LayerNode && node.id === layerJ);
-    if (!hasLayer) {
-      propagationFunction.body.addNode(layer(layerJ));
+    if (!layerNode) {
+      // add layer node to AST if it doesn't exist
+      layerNode = layer(layerJ);
+      propagationFunction.body.addNode(layerNode);
     }
-    let layerNode: LayerNode = propagationFunction.body.children.reduce<LayerNode>((found, node) => node instanceof LayerNode && node.id === layerJ ? node : found, null);
 
-    // add unit node if it doesn't exist
-    let hasUnit = layerNode.children.some(node => node instanceof UnitNode && node.id === j);
-    if (!hasUnit) {
-      layerNode.addNode(unit(j));
+    let unitNode: UnitNode = layerNode.children.find($ => $ instanceof UnitNode && $.id === j) as UnitNode;
+
+    if (!unitNode) {
+      // add unit node to AST if it doesn't exist
+      unitNode = unit(j);
+      layerNode.addNode(unitNode);
     }
-    const unitNode: UnitNode = layerNode.children.reduce<UnitNode>((found, node) => node instanceof UnitNode && node.id === j ? node : found, null);
 
     // helper to add a statement to the unit node
     const statement = unitNode.addNode.bind(unitNode);
@@ -1030,7 +1075,7 @@ export default class Lysergic {
     }
   }
 
-  static costFunction(target: number[], predicted: number[], costType: CostTypes): number {
+  static costFunction(target: number[], predicted: ArrayLike<number>, costType: CostTypes): number {
     let i: number, x = 0;
     switch (costType) {
       case CostTypes.MEAN_SQUARE_ERROR:

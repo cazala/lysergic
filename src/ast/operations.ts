@@ -104,8 +104,15 @@ export function exp(rhs: ExpressionNode) {
   return unaryOp('exp', rhs);
 }
 
+export function ln(rhs: ExpressionNode) {
+  return unaryOp('ln', rhs);
+}
+
 export function neg(rhs: ExpressionNode) {
   return unaryOp('-', rhs);
+}
+export function abs(rhs: ExpressionNode) {
+  return unaryOp('abs', rhs);
 }
 
 export function rand(rhs: ExpressionNode) {
