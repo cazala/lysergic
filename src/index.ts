@@ -584,11 +584,11 @@ export default class Lysergic {
         break;
 
       case ActivationTypes.RELU_PLUSONE:
-        statement(assign(derivativeJ, conditional(gt(stateJ, number(0)), number(1), number(0))));
+        statement(assign(derivativeJ, conditional(gt(activationJ, number(0)), number(1), number(0))));
         break;
 
       case ActivationTypes.RELU:
-        statement(assign(derivativeJ, conditional(gt(stateJ, number(0)), number(1), number(0))));
+        statement(assign(derivativeJ, conditional(gt(activationJ, number(0)), number(1), number(0))));
         break;
 
       case ActivationTypes.SOFTPLUS:
@@ -885,13 +885,27 @@ export default class Lysergic {
         break;
 
       case ActivationTypes.TANH:
-        const eP = this.alloc('eP', null);
+        /*const eP = this.alloc('eP', null);
         const eN = this.alloc('eN', null);
         statement(assign(eP, exp(stateJ)));
         statement(assign(eN, div(number(1), eP)));
         statement(assign(activationJ, div(sub(eP, eN), sum(eP, eN))));
-        break;
+        */
+        statement(assign(activationJ,
+          sub(
+            div(
+              number(2),
+              sum(
+                number(1),
+                exp(
+                  mul(number(-2), stateJ)
+                )
+              )
+            ),
+            number(1)
+          )));
 
+        break;
       case ActivationTypes.RELU_PLUSONE:
         statement(assign(activationJ, sum(number(1), conditional(gt(stateJ, number(0)), stateJ, number(0)))));
         break;
