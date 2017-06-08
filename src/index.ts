@@ -1,6 +1,6 @@
 declare var Proxy;
-import { DocumentNode, HeapReferenceNode, FunctionNode, LayerNode, UnitNode } from "./ast/nodes";
-import { func, layer, unit, assignMul, mul, assign, number, assignSum, div, sum, exp, neg, sub, pow, conditional, gt, document, ln, abs } from "./ast/operations";
+import { DocumentNode, HeapReferenceNode, FunctionNode, ExpressionNode, BlockNode } from "./ast/nodes";
+import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, neg, sub, pow, conditional, gt, document, ln, abs, max } from "./ast/operations";
 
 export interface Dictionary<T> {
   [key: string]: T;
@@ -52,6 +52,7 @@ export enum ActivationTypes {
   EXP,
   SOFTPLUS,
   SOFTSIGN,
+  MAXOUT,
   GAUSSIAN,
   RELU_PLUSONE
 }
@@ -420,6 +421,44 @@ export default class Lysergic {
             this.buildActivation(this.layers[layer][unit], layer);
         }
       }
+
+      let softmaxUnits = [];
+
+      for (let unit = 0; unit < this.layers[layer].length; unit++) {
+        const type = this.activationFunction[this.layers[layer][unit]];
+
+        if (type == ActivationTypes.SOFTMAX) {
+          softmaxUnits.push(this.layers[layer][unit]);
+        }
+      }
+
+      if (softmaxUnits.length > 1) {
+        this.softmaxUnits(softmaxUnits, layer);
+      }
+
+      for (let unit = 0; unit < this.layers[layer].length; unit++) {
+        switch (layer) {
+          case 0:
+            break;
+          default:
+            this.buildActivationDerivative(this.layers[layer][unit], layer);
+        }
+      }
+
+
+
+
+
+      for (let unit = 0; unit < this.layers[layer].length; unit++) {
+        switch (layer) {
+          case 0:
+            break;
+          default:
+            this.buildActivationTraces(this.layers[layer][unit], layer);
+        }
+      }
+
+
     }
     for (let unit = this.layers[outputLayer].length - 1; unit >= 0; unit--) {
       let targetJ = this.alloc(`target[${unit}]`, null, 'target');
@@ -501,77 +540,33 @@ export default class Lysergic {
     return this.variables[key];
   }
 
-  private buildActivation(j: number, layerJ: number): Variable {
-    // grab activation function node
+  private getFunctionBodyNode(functionName: string): BlockNode {
+    // grab the function node
     let activationFunction: FunctionNode = this.AST.children.find(node =>
-      node instanceof FunctionNode && node.name === 'activate'
+      node instanceof FunctionNode && node.name === functionName
     ) as FunctionNode;
 
-    let layerNode: LayerNode = activationFunction.body.children.find($ => $ instanceof LayerNode && $.id === layerJ) as LayerNode;
+    return activationFunction.body;
+  }
 
-    if (!layerNode) {
-      // add layer node to AST if it doesn't exist
-      layerNode = layer(layerJ);
-      activationFunction.body.addNode(layerNode);
-    }
+  private buildActivationDerivative(j: number, layerJ: number): Variable {
+    const layerNode = this.getFunctionBodyNode('activate');
 
-    let unitNode: UnitNode = layerNode.children.find($ => $ instanceof UnitNode && $.id === j) as UnitNode;
+    const blockNode = new BlockNode();
+    blockNode.name = `Activation derivative ${layerJ}:${j}`;
 
-    if (!unitNode) {
-      // add unit node to AST if it doesn't exist
-      unitNode = unit(j);
-      layerNode.addNode(unitNode);
-    }
+    layerNode.addNode(blockNode);
 
     // helper to add a statement to the unit node
-    const statement = unitNode.addNode.bind(unitNode);
+    const statement = (node: ExpressionNode) => blockNode.addNode(node);
 
-    /*====================================================================================================================
-
-    Eq. 15: compute state of j
-
-    s[j] = g[j][j] * w[j][j] * s[j] + Σ(inputSet[j], i => g[j][i] * w[j][i] * y[i]);
-
-    ====================================================================================================================*/
-    let i, k, h, g, l, a, to, from;
 
     const stateJ = this.alloc(`state[${j}]`, this.state[j]);
-    const isSelfConnected = this.connections.some(connection => connection.to === j && connection.from === j);
-    const isSelfConnectionGated = this.gates.some(gate => gate.to === j && gate.from === j);
-
-    if (isSelfConnected && isSelfConnectionGated) {
-      const gainJJ = this.alloc(`gain[${j}][${j}]`, this.gain[j][j]);
-      const weightJJ = this.alloc(`weight[${j}][${j}]`, this.weight[j][j]);
-      statement(assignMul(stateJ, mul(gainJJ, weightJJ)));
-    } else if (isSelfConnected) {
-      const weightJJ = this.alloc(`weight[${j}][${j}]`, this.weight[j][j]);
-      statement(assignMul(stateJ, weightJJ));
-    } else {
-      statement(assign(stateJ, number(0)));
-    }
-
-    for (h = 0; h < this.inputSet[j].length; h++) {
-      i = this.inputSet[j][h];
-      const isGated = this.gates.some(gate => gate.from === i && gate.to === j);
-      if (isGated) {
-        const stateJ = this.alloc(`state[${j}]`, this.state[j]);
-        const gainJI = this.alloc(`gain[${j}][${i}]`, this.gain[j][i]);
-        const weightJI = this.alloc(`weight[${j}][${i}]`, this.weight[j][i]);
-        const activationI = this.alloc(`activation[${i}]`, this.activation[i]);
-        statement(assignSum(stateJ, mul(mul(gainJI, weightJI), activationI)));
-      } else {
-        const stateJ = this.alloc(`state[${j}]`, this.state[j]);
-        const weightJI = this.alloc(`weight[${j}][${i}]`, this.weight[j][i]);
-        const activationI = this.alloc(`activation[${i}]`, this.activation[i]);
-        statement(assignSum(stateJ, mul(weightJI, activationI)));
-      }
-    }
 
     /*====================================================================================================================
 
-    Eq. 16: compute activation of j (and cache derivative for later use)
+    Eq. 16: compute activation derivative of j
 
-    y[j] = f(j)
     y'[j] = f'(j)
 
     ====================================================================================================================*/
@@ -581,31 +576,22 @@ export default class Lysergic {
     const type = this.activationFunction[j];
     switch (type) {
       case ActivationTypes.LOGISTIC_SIGMOID:
-        statement(assign(activationJ, div(number(1), sum(number(1), exp(neg(stateJ))))));
         statement(assign(derivativeJ, mul(activationJ, sub(number(1), activationJ))));
         break;
 
       case ActivationTypes.TANH:
-        const eP = this.alloc('eP', null);
-        const eN = this.alloc('eN', null);
-        statement(assign(eP, exp(stateJ)));
-        statement(assign(eN, div(number(1), eP)));
-        statement(assign(activationJ, div(sub(eP, eN), sum(eP, eN))));
         statement(assign(derivativeJ, sub(number(1), pow(activationJ, number(2)))));
         break;
 
       case ActivationTypes.RELU_PLUSONE:
-        statement(assign(activationJ, sum(number(1), conditional(gt(stateJ, number(0)), stateJ, number(0)))));
         statement(assign(derivativeJ, conditional(gt(stateJ, number(0)), number(1), number(0))));
         break;
 
       case ActivationTypes.RELU:
-        statement(assign(activationJ, conditional(gt(stateJ, number(0)), stateJ, number(0))));
         statement(assign(derivativeJ, conditional(gt(stateJ, number(0)), number(1), number(0))));
         break;
 
       case ActivationTypes.SOFTPLUS:
-        statement(assign(activationJ, ln(sum(number(1), exp(stateJ)))));
         statement(assign(derivativeJ, div(number(1), sum(number(1), exp(neg(stateJ))))));
         break;
 
@@ -614,28 +600,27 @@ export default class Lysergic {
         // http://www.iro.umontreal.ca/~lisa/publications2/index.php/attachments/single/205
         // http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
         statement(assign(aux, sum(number(1), abs(stateJ)))); // aux = 1 + Math.abs(x)
-        statement(assign(activationJ, div(stateJ, aux))); // activation = x / (1 + Math.abs(x));
         statement(assign(derivativeJ, div(number(1), mul(aux, aux)))); // derivative 1 / (aux * aux);
         break;
 
       case ActivationTypes.EXP:
-        statement(assign(activationJ, exp(stateJ)));
         statement(assign(derivativeJ, activationJ));
         break;
 
       case ActivationTypes.GAUSSIAN:
-        statement(assign(activationJ, exp(neg(mul(stateJ, stateJ)))));
         statement(assign(derivativeJ, mul(mul(number(-2), stateJ), activationJ)));
         break;
 
       case ActivationTypes.INVERSE_IDENTITY:
-        statement(assign(activationJ, div(number(1), stateJ)));
         statement(assign(derivativeJ, div(number(-1), mul(stateJ, stateJ))));
+        break;
+
+      case ActivationTypes.SOFTMAX:
+      case ActivationTypes.MAXOUT:
         break;
 
       case ActivationTypes.IDENTITY:
       default:
-        statement(assign(activationJ, stateJ));
         statement(assign(derivativeJ, number(1)));
         break;
       /*case ActivationTypes.MAX_POOLING:
@@ -650,6 +635,29 @@ export default class Lysergic {
         return this.random() < chances && this.status === StatusTypes.TRAINING ? 0 : 1*/
     }
 
+    // return the derivative of j
+    return derivativeJ;
+  }
+
+  private buildActivationTraces(j: number, layerJ: number) {
+    const layerNode = this.getFunctionBodyNode('activate');
+
+    const blockNode = new BlockNode();
+    blockNode.name = `Traces of ${layerJ}:${j}`;
+
+    layerNode.addNode(blockNode);
+
+    // helper to add a statement to the unit node
+    const statement = (node: ExpressionNode) => blockNode.addNode(node);
+
+
+    const activationJ = this.alloc(`activation[${j}]`, this.activation[j], 'output');
+    const derivativeJ = this.alloc(`derivative[${j}]`, this.derivative[j]);
+
+    const isSelfConnected = this.connections.some(connection => connection.to === j && connection.from === j);
+    const isSelfConnectionGated = this.gates.some(gate => gate.to === j && gate.from === j);
+
+    let i, k, h, g, l, a, to, from;
     /*====================================================================================================================
 
     Eq. 17: compute elegibility traces for j's inputs
@@ -753,34 +761,200 @@ export default class Lysergic {
         statement(assign(gainToFrom, activationJ));
       }
     }
+  }
+
+  private softmaxUnits(units: number[], layerJ: number) {
+    const layerNode = this.getFunctionBodyNode('activate');
+
+    const blockNode = new BlockNode();
+    blockNode.name = `Softmax ${layerJ}`;
+
+    layerNode.addNode(blockNode);
+
+    // helper to add a statement to the unit node
+    const statement = (node: ExpressionNode) => blockNode.addNode(node);
+
+    // --------- VARS ---------
+
+    const activations: Variable[] = units.map($ => this.alloc(`activation[${$}]`, this.activation[$]));
+    const derivatives: Variable[] = units.map($ => this.alloc(`derivative[${$}]`, this.derivative[$]));
+
+    const maximum = this.alloc(`softmaxMaximum[${layerJ}]`, 0);
+    const denominator = this.alloc(`softmaxDenominator[${layerJ}]`, 0);
+    const nominators: Variable[] = [];
+
+    units.forEach((unit, i) => {
+      const nominator = this.alloc(`softmaxNominators[${layerJ}][${unit}]`, 0);
+      nominators.push(nominator);
+    });
+
+    // --------- IMPL ---------
+
+    // Activation
+    statement(assign(maximum, number(0)));
+    statement(assign(denominator, number(0)));
+
+    // Find the maximum activation value
+    // Snyman, Jan. Practical mathematical optimization: an introduction to basic optimization theory and
+    // classical and new gradient-based algorithms. Vol. 97. Springer Science & Business Media, 2005.
+    activations.forEach($ => {
+      statement(assign(maximum, max(maximum, $)));
+    });
+
+    activations.forEach($ => {
+      statement(assign($, exp(sub($, maximum))));
+      statement(assignSum(denominator, $));
+    });
+
+    activations.forEach($ => {
+      statement(assign($, div($, denominator)));
+    });
+
+    // Derivative
+    activations.forEach(($, ix) => {
+      statement(assign(derivatives[ix], mul($, sub(number(1), $))));
+    });
+  }
+
+  private buildActivation(j: number, layerJ: number): Variable {
+    const layerNode = this.getFunctionBodyNode('activate');
+
+    const blockNode = new BlockNode();
+    blockNode.name = `Activation ${layerJ}:${j}`;
+
+    layerNode.addNode(blockNode);
+
+    // helper to add a statement to the unit node
+    const statement = (node: ExpressionNode) => blockNode.addNode(node);
+
+    /*====================================================================================================================
+
+    Eq. 15: compute state of j
+
+    s[j] = g[j][j] * w[j][j] * s[j] + Σ(inputSet[j], i => g[j][i] * w[j][i] * y[i]);
+
+    ====================================================================================================================*/
+    let i, h;
+
+    const stateJ = this.alloc(`state[${j}]`, this.state[j]);
+    const isSelfConnected = this.connections.some(connection => connection.to === j && connection.from === j);
+    const isSelfConnectionGated = this.gates.some(gate => gate.to === j && gate.from === j);
+
+    if (isSelfConnected && isSelfConnectionGated) {
+      const gainJJ = this.alloc(`gain[${j}][${j}]`, this.gain[j][j]);
+      const weightJJ = this.alloc(`weight[${j}][${j}]`, this.weight[j][j]);
+      statement(assignMul(stateJ, mul(gainJJ, weightJJ)));
+    } else if (isSelfConnected) {
+      const weightJJ = this.alloc(`weight[${j}][${j}]`, this.weight[j][j]);
+      statement(assignMul(stateJ, weightJJ));
+    } else {
+      statement(assign(stateJ, number(0)));
+    }
+
+    for (h = 0; h < this.inputSet[j].length; h++) {
+      i = this.inputSet[j][h];
+      const isGated = this.gates.some(gate => gate.from === i && gate.to === j);
+      if (isGated) {
+        const stateJ = this.alloc(`state[${j}]`, this.state[j]);
+        const gainJI = this.alloc(`gain[${j}][${i}]`, this.gain[j][i]);
+        const weightJI = this.alloc(`weight[${j}][${i}]`, this.weight[j][i]);
+        const activationI = this.alloc(`activation[${i}]`, this.activation[i]);
+        statement(assignSum(stateJ, mul(mul(gainJI, weightJI), activationI)));
+      } else {
+        const stateJ = this.alloc(`state[${j}]`, this.state[j]);
+        const weightJI = this.alloc(`weight[${j}][${i}]`, this.weight[j][i]);
+        const activationI = this.alloc(`activation[${i}]`, this.activation[i]);
+        statement(assignSum(stateJ, mul(weightJI, activationI)));
+      }
+    }
+
+    /*====================================================================================================================
+
+    Eq. 16: compute activation of j (and cache derivative for later use)
+
+    y[j] = f(j)
+    y'[j] = f'(j)
+
+    ====================================================================================================================*/
+    const activationJ = this.alloc(`activation[${j}]`, this.activation[j], 'output');
+
+    const type = this.activationFunction[j];
+    switch (type) {
+      case ActivationTypes.LOGISTIC_SIGMOID:
+        statement(assign(activationJ, div(number(1), sum(number(1), exp(neg(stateJ))))));
+        break;
+
+      case ActivationTypes.TANH:
+        const eP = this.alloc('eP', null);
+        const eN = this.alloc('eN', null);
+        statement(assign(eP, exp(stateJ)));
+        statement(assign(eN, div(number(1), eP)));
+        statement(assign(activationJ, div(sub(eP, eN), sum(eP, eN))));
+        break;
+
+      case ActivationTypes.RELU_PLUSONE:
+        statement(assign(activationJ, sum(number(1), conditional(gt(stateJ, number(0)), stateJ, number(0)))));
+        break;
+
+      case ActivationTypes.RELU:
+        statement(assign(activationJ, conditional(gt(stateJ, number(0)), stateJ, number(0))));
+        break;
+
+      case ActivationTypes.SOFTPLUS:
+        statement(assign(activationJ, ln(sum(number(1), exp(stateJ)))));
+        break;
+
+      case ActivationTypes.SOFTSIGN:
+        const aux = this.alloc('eP', null);
+        // http://www.iro.umontreal.ca/~lisa/publications2/index.php/attachments/single/205
+        // http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
+        statement(assign(aux, sum(number(1), abs(stateJ)))); // aux = 1 + Math.abs(x)
+        statement(assign(activationJ, div(stateJ, aux))); // activation = x / (1 + Math.abs(x));
+        break;
+
+      case ActivationTypes.EXP:
+        statement(assign(activationJ, exp(stateJ)));
+        break;
+
+      case ActivationTypes.GAUSSIAN:
+        statement(assign(activationJ, exp(neg(mul(stateJ, stateJ)))));
+        break;
+
+      case ActivationTypes.INVERSE_IDENTITY:
+        statement(assign(activationJ, div(number(1), stateJ)));
+        break;
+
+      case ActivationTypes.IDENTITY:
+      default:
+        statement(assign(activationJ, stateJ));
+        break;
+
+      /*case ActivationTypes.MAX_POOLING:
+        const inputUnit = this.inputsOf[unit][0]
+        const gatedUnit = this.gatedBy[unit][0]
+        const inputsOfGatedUnit = this.inputsOfGatedBy[gatedUnit][unit]
+        const maxActivation = inputsOfGatedUnit.reduce((max, input) => Math.max(this.activation[input], max), -Infinity)
+        const inputUnitWithHigherActivation = inputsOfGatedUnit.find(input => this.activation[input] === maxActivation)
+        return inputUnitWithHigherActivation === inputUnit ? 1 : 0*/
+      /*case ActivationTypes.DROPOUT:
+        const chances = this.state[unit]
+        return this.random() < chances && this.status === StatusTypes.TRAINING ? 0 : 1*/
+    }
 
     // return the activation of j
     return activationJ;
   }
 
   private buildPropagation(j: number, layerJ: number, targetJ?: Variable) {
-    let propagationFunction: FunctionNode = this.AST.children.find(node =>
-      node instanceof FunctionNode && node.name === 'propagate'
-    ) as FunctionNode;
+    const layerNode = this.getFunctionBodyNode('propagate');
 
-    let layerNode: LayerNode = propagationFunction.body.children.find($ => $ instanceof LayerNode && $.id === layerJ) as LayerNode;
+    const blockNode = new BlockNode();
+    blockNode.name = `Propagation ${layerJ}:${j}`;
 
-    if (!layerNode) {
-      // add layer node to AST if it doesn't exist
-      layerNode = layer(layerJ);
-      propagationFunction.body.addNode(layerNode);
-    }
-
-    let unitNode: UnitNode = layerNode.children.find($ => $ instanceof UnitNode && $.id === j) as UnitNode;
-
-    if (!unitNode) {
-      // add unit node to AST if it doesn't exist
-      unitNode = unit(j);
-      layerNode.addNode(unitNode);
-    }
+    layerNode.addNode(blockNode);
 
     // helper to add a statement to the unit node
-    const statement = unitNode.addNode.bind(unitNode);
+    const statement = (node: ExpressionNode) => blockNode.addNode(node);
 
     // step 1: compute error responsibility (δ) for j
 

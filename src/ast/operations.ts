@@ -1,7 +1,5 @@
 import {
   DocumentNode,
-  LayerNode,
-  UnitNode,
   ExpressionNode,
   FunctionNode,
   HeapReferenceNode,
@@ -46,6 +44,12 @@ export function assignDiv(target: HeapReferenceNode, rhs: ExpressionNode) {
 
 export function sum(lhs: ExpressionNode, rhs: ExpressionNode) {
   let bo = binaryOp(lhs, '+', rhs);
+  bo.hasParenthesis = true;
+  return bo;
+}
+
+export function max(lhs: ExpressionNode, rhs: ExpressionNode) {
+  let bo = binaryOp(lhs, 'max', rhs);
   bo.hasParenthesis = true;
   return bo;
 }
@@ -108,6 +112,10 @@ export function ln(rhs: ExpressionNode) {
   return unaryOp('ln', rhs);
 }
 
+export function sqrt(rhs: ExpressionNode) {
+  return unaryOp('sqrt', rhs);
+}
+
 export function neg(rhs: ExpressionNode) {
   return unaryOp('-', rhs);
 }
@@ -154,19 +162,6 @@ export function params(...parameters: string[]) {
   node.children = parameters.map(paramName => new ParameterNode(paramName));
   return node;
 }
-
-export function unit(id: number) {
-  let node = new UnitNode();
-  node.id = id;
-  return node;
-}
-
-export function layer(id: number) {
-  let node = new LayerNode();
-  node.id = id;
-  return node;
-}
-
 
 export function document(...args: ExpressionNode[]) {
   let node = new DocumentNode();

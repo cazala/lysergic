@@ -1,7 +1,7 @@
 import { childrenRef, indent } from './helpers';
 
-export type BinaryOperator = '+' | '-' | '/' | '*' | '=' | '*=' | '/=' | '+=' | '-=' | '^' | '>' | '<' | '>=' | '<=' | '=='
-export type UnaryOperator = '-' | 'exp' | 'rand' | 'abs' | 'sign' | 'ln'
+export type BinaryOperator = '+' | '-' | '/' | '*' | '=' | '*=' | '/=' | '+=' | '-=' | '^' | '>' | '<' | '>=' | '<=' | '==' | 'max'
+export type UnaryOperator = '-' | 'exp' | 'rand' | 'abs' | 'sqrt' | 'ln'
 
 export abstract class Node {
   children: Node[] = [];
@@ -109,26 +109,6 @@ export class ParameterNode extends ExpressionNode {
 
   toString() {
     return this.name;
-  }
-}
-
-export class LayerNode extends BlockNode {
-  id: number;
-  children: UnitNode[];
-  toString() {
-    return `// Layer ${this.id}\n`
-      + indent(this.children.map(x => x + ';').join('\n'))
-      + '\n';
-  }
-}
-
-export class UnitNode extends BlockNode {
-  id: number;
-  children: ExpressionNode[];
-  toString() {
-    return `// Unit ${this.id}\n`
-      + indent(this.children.map(x => x + ';').join('\n'))
-      + '\n';
   }
 }
 
