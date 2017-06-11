@@ -1,6 +1,7 @@
 declare var Proxy;
 import { DocumentNode, HeapReferenceNode, FunctionNode, ExpressionNode, BlockNode } from "./ast/nodes";
-import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, neg, sub, pow, conditional, gt, document, ln, abs, max } from "./ast/operations";
+import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max } from "./ast/operations";
+import { buildActivationFunction, buildDerivativeFunction } from "./ast/activations";
 
 export interface Dictionary<T> {
   [key: string]: T;
@@ -33,7 +34,11 @@ export class Variable extends HeapReferenceNode {
 export enum CostTypes {
   MEAN_SQUARE_ERROR,
   CROSS_ENTROPY,
-  BINARY
+  BINARY,
+  HINGE,
+  MEAN_SQUARE_LOG_ERROR,
+  MEAN_ABSOLUTE_ERROR,
+  MEAN_ABSOLUTE_PERCENTAGE_ERROR
 }
 
 // -- Activation Types
@@ -54,7 +59,8 @@ export enum ActivationTypes {
   SOFTSIGN,
   MAXOUT,
   GAUSSIAN,
-  RELU_PLUSONE
+  RELU_PLUSONE,
+  STEP
 }
 
 // -- Status Types
@@ -183,7 +189,7 @@ export default class Lysergic {
     const i = from;
     const isSelfConnection = (from === to);
     this.gain[j][i] = 1; // ungated connections have a gain of 1 (eq. 14)
-    this.weight[j][i] = isSelfConnection ? 1 : weight == null ? this.random() : weight; // self-connections have a fixed weight of 1 (this is explained in the text between eq. 14 and eq. 15)
+    this.weight[j][i] = isSelfConnection ? 1 : weight == null ? this.random() * .3 + .1 : weight; // self-connections have a fixed weight of 1 (this is explained in the text between eq. 14 and eq. 15)
     this.elegibilityTrace[j][i] = 0;
     this.extendedElegibilityTrace[j][i] = [];
 
@@ -395,7 +401,7 @@ export default class Lysergic {
     this.AST = document();
     let outputLayer = this.layers.length - 1;
 
-    // build AST 
+    // build AST
     this.alloc(`learningRate`, this.learningRate);
     this.alloc(`seed`, this.random());
     const activationFunction: FunctionNode = func('activate');
@@ -445,10 +451,6 @@ export default class Lysergic {
         }
       }
 
-
-
-
-
       for (let unit = 0; unit < this.layers[layer].length; unit++) {
         switch (layer) {
           case 0:
@@ -457,19 +459,20 @@ export default class Lysergic {
             this.buildActivationTraces(this.layers[layer][unit], layer);
         }
       }
-
-
     }
+
     for (let unit = this.layers[outputLayer].length - 1; unit >= 0; unit--) {
       let targetJ = this.alloc(`target[${unit}]`, null, 'target');
       this.targets.push(targetJ);
       this.buildPropagation(this.layers[outputLayer][unit], outputLayer, targetJ);
     }
+
     for (let layer = this.layers.length - 2; layer > 0; layer--) {
       for (let unit = this.layers[layer].length - 1; unit >= 0; unit--) {
         this.buildPropagation(this.layers[layer][unit], layer);
       }
     }
+
     this.targets.reverse();
 
     // build heap and memory
@@ -549,8 +552,8 @@ export default class Lysergic {
     return activationFunction.body;
   }
 
-  private buildActivationDerivative(j: number, layerJ: number): Variable {
-    const layerNode = this.getFunctionBodyNode('activate');
+  private buildActivationDerivative(j: number, layerJ: number, targetFunction: string = 'activate'): Variable {
+    const layerNode = this.getFunctionBodyNode(targetFunction);
 
     const blockNode = new BlockNode();
     blockNode.name = `Activation derivative ${layerJ}:${j}`;
@@ -573,66 +576,10 @@ export default class Lysergic {
     const activationJ = this.alloc(`activation[${j}]`, this.activation[j], 'output');
     const derivativeJ = this.alloc(`derivative[${j}]`, this.derivative[j]);
 
-    const type = this.activationFunction[j];
-    switch (type) {
-      case ActivationTypes.LOGISTIC_SIGMOID:
-        statement(assign(derivativeJ, mul(activationJ, sub(number(1), activationJ))));
-        break;
+    const derivativeFunction = buildDerivativeFunction(stateJ, activationJ, this.activationFunction[j]);
 
-      case ActivationTypes.TANH:
-        statement(assign(derivativeJ, sub(number(1), pow(activationJ, number(2)))));
-        break;
-
-      case ActivationTypes.RELU_PLUSONE:
-        statement(assign(derivativeJ, conditional(gt(activationJ, number(0)), number(1), number(0))));
-        break;
-
-      case ActivationTypes.RELU:
-        statement(assign(derivativeJ, conditional(gt(activationJ, number(0)), number(1), number(0))));
-        break;
-
-      case ActivationTypes.SOFTPLUS:
-        statement(assign(derivativeJ, div(number(1), sum(number(1), exp(neg(stateJ))))));
-        break;
-
-      case ActivationTypes.SOFTSIGN:
-        const aux = this.alloc('eP', null);
-        // http://www.iro.umontreal.ca/~lisa/publications2/index.php/attachments/single/205
-        // http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
-        statement(assign(aux, sum(number(1), abs(stateJ)))); // aux = 1 + Math.abs(x)
-        statement(assign(derivativeJ, div(number(1), mul(aux, aux)))); // derivative 1 / (aux * aux);
-        break;
-
-      case ActivationTypes.EXP:
-        statement(assign(derivativeJ, activationJ));
-        break;
-
-      case ActivationTypes.GAUSSIAN:
-        statement(assign(derivativeJ, mul(mul(number(-2), stateJ), activationJ)));
-        break;
-
-      case ActivationTypes.INVERSE_IDENTITY:
-        statement(assign(derivativeJ, div(number(-1), mul(stateJ, stateJ))));
-        break;
-
-      case ActivationTypes.SOFTMAX:
-      case ActivationTypes.MAXOUT:
-        break;
-
-      case ActivationTypes.IDENTITY:
-      default:
-        statement(assign(derivativeJ, number(1)));
-        break;
-      /*case ActivationTypes.MAX_POOLING:
-        const inputUnit = this.inputsOf[unit][0]
-        const gatedUnit = this.gatedBy[unit][0]
-        const inputsOfGatedUnit = this.inputsOfGatedBy[gatedUnit][unit]
-        const maxActivation = inputsOfGatedUnit.reduce((max, input) => Math.max(this.activation[input], max), -Infinity)
-        const inputUnitWithHigherActivation = inputsOfGatedUnit.find(input => this.activation[input] === maxActivation)
-        return inputUnitWithHigherActivation === inputUnit ? 1 : 0*/
-      /*case ActivationTypes.DROPOUT:
-        const chances = this.state[unit]
-        return this.random() < chances && this.status === StatusTypes.TRAINING ? 0 : 1*/
+    if (derivativeFunction) {
+      statement(assign(derivativeJ, derivativeFunction));
     }
 
     // return the derivative of j
@@ -816,8 +763,8 @@ export default class Lysergic {
     });
   }
 
-  private buildActivation(j: number, layerJ: number): Variable {
-    const layerNode = this.getFunctionBodyNode('activate');
+  private buildActivation(j: number, layerJ: number, targetFunction: string = 'activate'): Variable {
+    const layerNode = this.getFunctionBodyNode(targetFunction);
 
     const blockNode = new BlockNode();
     blockNode.name = `Activation ${layerJ}:${j}`;
@@ -878,81 +825,10 @@ export default class Lysergic {
     ====================================================================================================================*/
     const activationJ = this.alloc(`activation[${j}]`, this.activation[j], 'output');
 
-    const type = this.activationFunction[j];
-    switch (type) {
-      case ActivationTypes.LOGISTIC_SIGMOID:
-        statement(assign(activationJ, div(number(1), sum(number(1), exp(neg(stateJ))))));
-        break;
+    const activationFunction = buildActivationFunction(stateJ, this.activationFunction[j]);
 
-      case ActivationTypes.TANH:
-        /*const eP = this.alloc('eP', null);
-        const eN = this.alloc('eN', null);
-        statement(assign(eP, exp(stateJ)));
-        statement(assign(eN, div(number(1), eP)));
-        statement(assign(activationJ, div(sub(eP, eN), sum(eP, eN))));
-        */
-        statement(assign(activationJ,
-          sub(
-            div(
-              number(2),
-              sum(
-                number(1),
-                exp(
-                  mul(number(-2), stateJ)
-                )
-              )
-            ),
-            number(1)
-          )));
-
-        break;
-      case ActivationTypes.RELU_PLUSONE:
-        statement(assign(activationJ, sum(number(1), conditional(gt(stateJ, number(0)), stateJ, number(0)))));
-        break;
-
-      case ActivationTypes.RELU:
-        statement(assign(activationJ, conditional(gt(stateJ, number(0)), stateJ, number(0))));
-        break;
-
-      case ActivationTypes.SOFTPLUS:
-        statement(assign(activationJ, ln(sum(number(1), exp(stateJ)))));
-        break;
-
-      case ActivationTypes.SOFTSIGN:
-        const aux = this.alloc('eP', null);
-        // http://www.iro.umontreal.ca/~lisa/publications2/index.php/attachments/single/205
-        // http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
-        statement(assign(aux, sum(number(1), abs(stateJ)))); // aux = 1 + Math.abs(x)
-        statement(assign(activationJ, div(stateJ, aux))); // activation = x / (1 + Math.abs(x));
-        break;
-
-      case ActivationTypes.EXP:
-        statement(assign(activationJ, exp(stateJ)));
-        break;
-
-      case ActivationTypes.GAUSSIAN:
-        statement(assign(activationJ, exp(neg(mul(stateJ, stateJ)))));
-        break;
-
-      case ActivationTypes.INVERSE_IDENTITY:
-        statement(assign(activationJ, div(number(1), stateJ)));
-        break;
-
-      case ActivationTypes.IDENTITY:
-      default:
-        statement(assign(activationJ, stateJ));
-        break;
-
-      /*case ActivationTypes.MAX_POOLING:
-        const inputUnit = this.inputsOf[unit][0]
-        const gatedUnit = this.gatedBy[unit][0]
-        const inputsOfGatedUnit = this.inputsOfGatedBy[gatedUnit][unit]
-        const maxActivation = inputsOfGatedUnit.reduce((max, input) => Math.max(this.activation[input], max), -Infinity)
-        const inputUnitWithHigherActivation = inputsOfGatedUnit.find(input => this.activation[input] === maxActivation)
-        return inputUnitWithHigherActivation === inputUnit ? 1 : 0*/
-      /*case ActivationTypes.DROPOUT:
-        const chances = this.state[unit]
-        return this.random() < chances && this.status === StatusTypes.TRAINING ? 0 : 1*/
+    if (activationFunction) {
+      statement(assign(activationJ, activationFunction));
     }
 
     // return the activation of j
@@ -1007,8 +883,8 @@ export default class Lysergic {
         const errorResponsibilityK = this.alloc(`errorResponsibility[${k}]`, this.errorResponsibility[k]);
         const isGated = this.gates.some(gate => gate.to === k && gate.from === j);
         if (isGated) {
-          const gainKJ = this.alloc(`gain[${k}][${j}]`, this.gain[k][j]);
           const weightKJ = this.alloc(`weight[${k}][${j}]`, this.weight[k][j]);
+          const gainKJ = this.alloc(`gain[${k}][${j}]`, this.gain[k][j]);
           statement(assignSum(projectedErrorResponsibilityJ, mul(mul(gainKJ, weightKJ), errorResponsibilityK)));
         } else {
           const weightKJ = this.alloc(`weight[${k}][${j}]`, this.weight[k][j]);
@@ -1265,12 +1141,37 @@ export default class Lysergic {
 
   static costFunction(target: number[], predicted: ArrayLike<number>, costType: CostTypes): number {
     let i: number, x = 0;
+
     switch (costType) {
+      case CostTypes.HINGE:
+        for (i = 0; i < predicted.length; i++) {
+          x += Math.max(0, 1 - target[i] * predicted[i]);
+        }
+        return x;
+
+      case CostTypes.MEAN_ABSOLUTE_PERCENTAGE_ERROR:
+        for (i = 0; i < predicted.length; i++) {
+          x += Math.abs((predicted[i] - target[i]) / Math.max(target[i], 1e-15));
+        }
+        return x / predicted.length;
+
+      case CostTypes.MEAN_SQUARE_LOG_ERROR:
+        for (i = 0; i < predicted.length; i++) {
+          x += Math.log(Math.max(target[i], 1e-15)) - Math.log(Math.max(predicted[i], 1e-15));
+        }
+        return x;
+
       case CostTypes.MEAN_SQUARE_ERROR:
         for (i = 0; i < target.length; i++) {
           x += Math.pow(target[i] - predicted[i], 2);
         }
         return x / target.length;
+
+      case CostTypes.MEAN_ABSOLUTE_ERROR:
+        for (i = 0; i < predicted.length; i++) {
+          x += Math.abs(target[i] - predicted[i]);
+        }
+        return x / predicted.length;
 
       case CostTypes.CROSS_ENTROPY:
         for (i = 0; i < target.length; i++) {
