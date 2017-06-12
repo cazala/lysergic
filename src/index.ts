@@ -1191,7 +1191,21 @@ export default class Lysergic {
 
       case CostTypes.CROSS_ENTROPY:
         for (i = 0; i < target.length; i++) {
-          x -= (target[i] * Math.log(predicted[i] + 1e-15)) + ((1 - target[i]) * Math.log((1 + 1e-15) - predicted[i])); // +1e-15 is a tiny push away to avoid Math.log(0)
+          if (target[i] > 0) {
+            if (predicted[i] > 0) {
+              x -= target[i] * Math.log(predicted[i]);
+            } else {
+              x -= target[i] * Math.E;
+            }
+          }
+
+          if (target[i] != 1) {
+            if ((1 - predicted[i]) > 0) {
+              x -= (1 - target[i]) * Math.log(1 - predicted[i]);
+            } else {
+              x -= (1 - target[i]) * Math.E;
+            }
+          }
         }
         return x;
 
