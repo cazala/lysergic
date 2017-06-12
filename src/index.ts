@@ -750,41 +750,45 @@ export default class Lysergic {
       statement(assign(maximum, max(maximum, $)));
     });
 
+    // maximum = max(activations)
+
+    // activation(i)' = (activation(i) - maximum)^E
+    // denominator = Σ activation'
+
     activations.forEach($ => {
       statement(assign($, exp(sub($, maximum))));
       statement(assignSum(denominator, $));
     });
 
+    // activation(i) = activation(i) / denominator
     activations.forEach($ => {
       statement(assign($, div($, denominator)));
     });
 
-    // Derivative
+    // derivative(j) = activation(i) * (1 - activation(i)) - (j == i ? 0 : 1) activation(j)^2
     activations.forEach(($, $i) => {
-      // f'(w) = f(x)(o(1) - f(x))
+      statement(assign(derivatives[$i], mul($, sub(number(1), $))));
 
-      // outdw[j] = 1
-
-      /*
-        for (var i = 0; i < X; i++) {
-          var sum = outw[i] * (1 - outw[i]) * outdw[i]
-
-          for (var j = 0; j < X; j++) {
-              if (i !== j)  sum -= outw[j] * outw[i] * outdw[j]
-          }
-
-          inpdw[i] = sum
-        }
-      */
       activations.forEach((_, $j) => {
-        const firstPart = mul($, sub(number(1), $));
-        if ($i == $j) {
-          statement(assign(derivatives[$i], firstPart));
-        } else {
-          statement(assign(derivatives[$i], sub(firstPart, mul($, $))));
+        if ($i !== $j) {
+          statement(assignSub(derivatives[$i], mul($, $)));
         }
       });
     });
+
+    // outdw[j] = 1
+
+    /*
+      for (var i = 0; i < X; i++) {
+        var sum = outw[i] * (1 - outw[i]) * outdw[i]
+
+        for (var j = 0; j < X; j++) {
+            if (i !== j)  sum -= outw[j] * outw[i] * outdw[j]
+        }
+
+        inpdw[i] = sum
+      }
+    */
   }
 
   private buildActivation(j: number, layerJ: number, targetFunction: string = 'activate'): Variable {
