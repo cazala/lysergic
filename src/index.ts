@@ -1,6 +1,6 @@
 declare var Proxy, console;
 import { DocumentNode, HeapReferenceNode, FunctionNode, ExpressionNode, BlockNode } from "./ast/nodes";
-import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max } from "./ast/operations";
+import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max, assignSub } from "./ast/operations";
 import { buildActivationFunction, buildDerivativeFunction } from "./ast/activations";
 
 export interface Dictionary<T> {
@@ -760,8 +760,30 @@ export default class Lysergic {
     });
 
     // Derivative
-    activations.forEach(($, ix) => {
-      statement(assign(derivatives[ix], mul($, sub(number(1), $))));
+    activations.forEach(($, $i) => {
+      // f'(w) = f(x)(o(1) - f(x))
+
+      // outdw[j] = 1
+
+      /*
+        for (var i = 0; i < X; i++) {
+          var sum = outw[i] * (1 - outw[i]) * outdw[i]
+
+          for (var j = 0; j < X; j++) {
+              if (i !== j)  sum -= outw[j] * outw[i] * outdw[j]
+          }
+
+          inpdw[i] = sum
+        }
+      */
+      activations.forEach((_, $j) => {
+        const firstPart = mul($, sub(number(1), $));
+        if ($i == $j) {
+          statement(assign(derivatives[$i], firstPart));
+        } else {
+          statement(assign(derivatives[$i], sub(firstPart, mul($, $))));
+        }
+      });
     });
   }
 
