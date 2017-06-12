@@ -1175,6 +1175,7 @@ export default class Lysergic {
     let i: number, x = 0;
 
     switch (costType) {
+      // https://en.wikipedia.org/wiki/Hinge_loss
       case CostTypes.HINGE:
         for (i = 0; i < predicted.length; i++) {
           x += Math.max(0, 1 - target[i] * predicted[i]);

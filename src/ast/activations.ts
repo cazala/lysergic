@@ -1,3 +1,8 @@
+// https://stats.stackexchange.com/questions/115258/comprehensive-list-of-activation-functions-in-neural-networks-with-pros-cons
+// https://en.wikipedia.org/wiki/Activation_function
+// https://nn.readthedocs.io/en/rtd/transfer/
+// https://math.stackexchange.com/questions/945871/derivative-of-softmax-loss-function
+
 import { Variable, ActivationTypes } from "../index";
 import { mul, number, div, sum, exp, neg, sub, conditional, gt, ln, abs, pow } from "./operations";
 import { ExpressionNode } from "./nodes";
