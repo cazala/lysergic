@@ -38,29 +38,31 @@ export enum CostTypes {
   HINGE,
   MEAN_SQUARE_LOG_ERROR,
   MEAN_ABSOLUTE_ERROR,
-  MEAN_ABSOLUTE_PERCENTAGE_ERROR
+  MEAN_ABSOLUTE_PERCENTAGE_ERROR,
+  SOFTMAX
 }
 
 // -- Activation Types
 
 export enum ActivationTypes {
-  LOGISTIC_SIGMOID,
-  TANH,
-  RELU,
-  MAX_POOLING,
-  DROPOUT,
-  IDENTITY,
-  // derivative 0
-  SOFTMAX,
-  // derivative 1
-  INVERSE_IDENTITY,
-  EXP,
-  SOFTPLUS,
-  SOFTSIGN,
-  MAXOUT,
-  GAUSSIAN,
-  RELU_PLUSONE,
-  STEP
+  IDENTITY = 0,
+  LOGISTIC_SIGMOID = 1,
+  TANH = 2,
+  RELU = 3,
+  DROPOUT = 4,
+  INVERSE_IDENTITY = 5,
+  EXP = 6,
+  SOFTPLUS = 7,
+  SOFTSIGN = 8,
+  GAUSSIAN = 9,
+  RELU_PLUSONE = 10,
+  STEP = 11,
+
+  AVG_POOLING = 128 | 1,
+  MAX_POOLING = 128 | 2,
+  MAXOUT = 128 | 3,
+  SOFTMAX = 128 | 4,
+  SHARPEN = 128 | 5
 }
 
 // -- Status Types
@@ -1152,7 +1154,17 @@ export default class Lysergic {
           x += Math.max(0, 1 - target[i] * predicted[i]);
         }
         return x;
-
+      case CostTypes.SOFTMAX:
+        for (i = 0; i < predicted.length; i++) {
+          if (target[i] > 0) {
+            if (predicted[i] > 0) {
+              x += target[i] * Math.log(predicted[i]);
+            } else {
+              x += target[i] * Math.E;
+            }
+          }
+        }
+        return -x;
       case CostTypes.MEAN_ABSOLUTE_PERCENTAGE_ERROR:
         for (i = 0; i < predicted.length; i++) {
           x += Math.abs((predicted[i] - target[i]) / Math.max(target[i], 1e-15));
