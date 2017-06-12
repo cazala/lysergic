@@ -90,8 +90,6 @@ export function buildDerivativeFunction(state: Variable, activation: Variable, t
     case ActivationTypes.DROPOUT:
       return number(0);
 
-    case ActivationTypes.IDENTITY:
-      return number(1);
     /*case ActivationTypes.MAX_POOLING:
       const inputUnit = this.inputsOf[unit][0]
       const gatedUnit = this.gatedBy[unit][0]
@@ -102,7 +100,6 @@ export function buildDerivativeFunction(state: Variable, activation: Variable, t
     /*case ActivationTypes.DROPOUT:
       const chances = this.state[unit]
       return this.random() < chances && this.status === StatusTypes.TRAINING ? 0 : 1*/
-    case ActivationTypes.SOFTMAX:
     case ActivationTypes.MAXOUT:
       return null;
   }

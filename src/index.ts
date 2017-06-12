@@ -1,4 +1,4 @@
-declare var Proxy;
+declare var Proxy, console;
 import { DocumentNode, HeapReferenceNode, FunctionNode, ExpressionNode, BlockNode } from "./ast/nodes";
 import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max } from "./ast/operations";
 import { buildActivationFunction, buildDerivativeFunction } from "./ast/activations";
@@ -1042,7 +1042,11 @@ export default class Lysergic {
         this.proxyDimensions(`${id}[${propKey}]`, dimensions - 1, parent[key], propKey.toString());
       }
     } else if (key in parent) { // not all the properties in the engine are in the heap (ie. the state of the input units)
-
+      if (!parent[key]) {
+        parent[key] = [];
+        console.warn('There is no key ' + key);
+        return;
+      }
       const length = parent[key].length;
       let that = this;
       parent[key] = new Proxy({}, {
