@@ -80,6 +80,10 @@ export enum StatusTypes {
 
 // -- Engine
 
+export interface ILysergicOptions {
+  bias?: boolean;
+  generator?: () => number;
+}
 
 export default class Lysergic {
 
@@ -116,7 +120,7 @@ export default class Lysergic {
   learningRate: number = 0.1;
   layers: number[][] = [];
   size: number = 0;
-  random: Function = null;
+  random: () => number = Lysergic.RandomGenerator;
   biasUnit: number = null;
   status: StatusTypes = StatusTypes.IDLE;
 
@@ -131,7 +135,7 @@ export default class Lysergic {
   targets: Variable[] = [];
   AST: DocumentNode = document();
 
-  constructor({ bias = true, generator = Lysergic.RandomGenerator } = {}) {
+  constructor({ bias = true, generator = Lysergic.RandomGenerator }: ILysergicOptions = {}) {
     this.random = generator;
     this.status = StatusTypes.IDLE;
 
@@ -414,6 +418,12 @@ export default class Lysergic {
       this.alloc(`activation[${this.biasUnit}]`, this.activation[this.biasUnit]);
     }
     for (let layer = 0; layer < this.layers.length; layer++) {
+      if (layer != 0) {
+        for (let unit = 0; unit < this.layers[layer].length; unit++) {
+          this.buildComputeState(this.layers[layer][unit], layer);
+        }
+      }
+
       for (let unit = 0; unit < this.layers[layer].length; unit++) {
         let activationJ: Variable;
         switch (layer) {
@@ -430,6 +440,7 @@ export default class Lysergic {
         }
       }
 
+      // SOFTMAX COMPUTATION
       let softmaxUnits = [];
 
       for (let unit = 0; unit < this.layers[layer].length; unit++) {
@@ -791,11 +802,12 @@ export default class Lysergic {
     */
   }
 
-  private buildActivation(j: number, layerJ: number, targetFunction: string = 'activate'): Variable {
+
+  private buildComputeState(j: number, layerJ: number, targetFunction: string = 'activate'): Variable {
     const layerNode = this.getFunctionBodyNode(targetFunction);
 
     const blockNode = new BlockNode();
-    blockNode.name = `Activation ${layerJ}:${j}`;
+    blockNode.name = `ActivationState ${layerJ}:${j}`;
 
     layerNode.addNode(blockNode);
 
@@ -843,6 +855,20 @@ export default class Lysergic {
       }
     }
 
+    // return the activation of j
+    return stateJ;
+  }
+
+  private buildActivation(j: number, layerJ: number, targetFunction: string = 'activate'): Variable {
+    const layerNode = this.getFunctionBodyNode(targetFunction);
+
+    const blockNode = new BlockNode();
+    blockNode.name = `Activation ${layerJ}:${j}`;
+
+    layerNode.addNode(blockNode);
+
+    // helper to add a statement to the unit node
+    const statement = (node: ExpressionNode) => blockNode.addNode(node);
     /*====================================================================================================================
 
     Eq. 16: compute activation of j (and cache derivative for later use)
@@ -851,6 +877,8 @@ export default class Lysergic {
     y'[j] = f'(j)
 
     ====================================================================================================================*/
+    const stateJ = this.alloc(`state[${j}]`, this.state[j]);
+
     const activationJ = this.alloc(`activation[${j}]`, this.activation[j], 'output');
 
     const activationFunction = buildActivationFunction(stateJ, this.activationFunction[j]);
