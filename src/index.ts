@@ -778,7 +778,6 @@ export default class Lysergic {
     // maximum = max(activations)
 
     // activation(i)' = (activation(i) - maximum)^E
-
     states.forEach(($, i) => {
       statement(assign(activations[i], exp(sub($, maximum))));
     });
@@ -791,7 +790,7 @@ export default class Lysergic {
       statement(assign($, div($, denominator)));
     });
 
-    // derivative(j) = activation(i) * (1 - activation(i)) - (j == i ? 0 : 1) activation(j)^2
+    // derivative(j) = activation(i) * (1 - activation(i)) - knockner(j, i) * activation(j)^2
     states.forEach(($pi, $i) => {
       statement(assign(derivatives[$i], mul($pi, sub(number(1), $pi))));
 
