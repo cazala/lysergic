@@ -771,7 +771,7 @@ export default class Lysergic {
     // Find the maximum activation value
     // Snyman, Jan. Practical mathematical optimization: an introduction to basic optimization theory and
     // classical and new gradient-based algorithms. Vol. 97. Springer Science & Business Media, 2005.
-    activations.forEach($ => {
+    states.forEach($ => {
       statement(assign(maximum, max(maximum, $)));
     });
 
@@ -780,10 +780,11 @@ export default class Lysergic {
     // activation(i)' = (activation(i) - maximum)^E
     // denominator = Σ activation'
 
-    activations.forEach($ => {
-      statement(assign($, exp(sub($, maximum))));
-      statement(assignSum(denominator, $));
+    states.forEach(($, i) => {
+      statement(assign(activations[i], exp(sub($, maximum))));
     });
+
+    activations.forEach($ => statement(assignSum(denominator, $)));
 
     // activation(i) = activation(i) / denominator
     activations.forEach($ => {
