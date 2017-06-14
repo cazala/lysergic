@@ -26,6 +26,12 @@ export function assign(target: HeapReferenceNode, rhs: ExpressionNode) {
   return binaryOp(target, '=', rhs);
 }
 
+// https://en.wikipedia.org/wiki/Kronecker_delta
+export function krnonecker(i: ExpressionNode, j: ExpressionNode) {
+  // i == j ? 1 : 0
+  return binaryOp(i, 'kronecker', j);
+}
+
 export function assignMul(target: HeapReferenceNode, rhs: ExpressionNode) {
   return binaryOp(target, '*=', rhs);
 }

@@ -1,6 +1,6 @@
 import { childrenRef, indent } from './helpers';
 
-export type BinaryOperator = '+' | '-' | '/' | '*' | '=' | '*=' | '/=' | '+=' | '-=' | '^' | '>' | '<' | '>=' | '<=' | '==' | 'max'
+export type BinaryOperator = '+' | '-' | '/' | '*' | '=' | '*=' | '/=' | '+=' | '-=' | '^' | '>' | '<' | '>=' | '<=' | '==' | 'max' | 'kronecker'
 export type UnaryOperator = '-' | 'exp' | 'rand' | 'abs' | 'sqrt' | 'ln'
 
 export abstract class Node {

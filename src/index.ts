@@ -1,4 +1,4 @@
-declare var Proxy, console;
+declare var Proxy;
 import { DocumentNode, HeapReferenceNode, FunctionNode, ExpressionNode, BlockNode } from "./ast/nodes";
 import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max, assignSub } from "./ast/operations";
 import { buildActivationFunction, buildDerivativeFunction } from "./ast/activations";
@@ -58,11 +58,13 @@ export enum ActivationTypes {
   RELU_PLUSONE = 10,
   STEP = 11,
 
-  AVG_POOLING = 128 | 1,
-  MAX_POOLING = 128 | 2,
-  MAXOUT = 128 | 3,
-  SOFTMAX = 128 | 4,
-  SHARPEN = 128 | 5
+  _SPECIAL_LAYER_ACTIVATION_ = 128,
+
+  AVG_POOLING = _SPECIAL_LAYER_ACTIVATION_ | 1,
+  MAX_POOLING = _SPECIAL_LAYER_ACTIVATION_ | 2,
+  MAXOUT = _SPECIAL_LAYER_ACTIVATION_ | 3,
+  SOFTMAX = _SPECIAL_LAYER_ACTIVATION_ | 4,
+  SHARPEN = _SPECIAL_LAYER_ACTIVATION_ | 5,
 }
 
 // -- Status Types
@@ -440,6 +442,15 @@ export default class Lysergic {
         }
       }
 
+      for (let unit = 0; unit < this.layers[layer].length; unit++) {
+        switch (layer) {
+          case 0:
+            break;
+          default:
+            this.buildActivationDerivative(this.layers[layer][unit], layer);
+        }
+      }
+
       // SOFTMAX COMPUTATION
       let softmaxUnits = [];
 
@@ -453,15 +464,6 @@ export default class Lysergic {
 
       if (softmaxUnits.length > 1) {
         this.softmaxUnits(softmaxUnits, layer);
-      }
-
-      for (let unit = 0; unit < this.layers[layer].length; unit++) {
-        switch (layer) {
-          case 0:
-            break;
-          default:
-            this.buildActivationDerivative(this.layers[layer][unit], layer);
-        }
       }
 
       for (let unit = 0; unit < this.layers[layer].length; unit++) {
@@ -738,6 +740,7 @@ export default class Lysergic {
 
     const activations: Variable[] = units.map($ => this.alloc(`activation[${$}]`, this.activation[$]));
     const derivatives: Variable[] = units.map($ => this.alloc(`derivative[${$}]`, this.derivative[$]));
+    const states: Variable[] = units.map($ => this.alloc(`state[${$}]`, this.derivative[$]));
 
     const maximum = this.alloc(`softmaxMaximum[${layerJ}]`, 0);
     const denominator = this.alloc(`softmaxDenominator[${layerJ}]`, 0);
@@ -777,12 +780,12 @@ export default class Lysergic {
     });
 
     // derivative(j) = activation(i) * (1 - activation(i)) - (j == i ? 0 : 1) activation(j)^2
-    activations.forEach(($, $i) => {
-      statement(assign(derivatives[$i], mul($, sub(number(1), $))));
+    states.forEach(($pi, $i) => {
+      statement(assign(derivatives[$i], mul($pi, sub(number(1), $pi))));
 
-      activations.forEach((_, $j) => {
+      states.forEach(($pj, $j) => {
         if ($i !== $j) {
-          statement(assignSub(derivatives[$i], mul($, $)));
+          statement(assignSub(derivatives[$i], mul($pj, $pi)));
         }
       });
     });
@@ -1100,7 +1103,7 @@ export default class Lysergic {
     } else if (key in parent) { // not all the properties in the engine are in the heap (ie. the state of the input units)
       if (!parent[key]) {
         parent[key] = [];
-        console.warn('There is no key ' + key);
+        // console.warn('There is no key ' + key);
         return;
       }
       const length = parent[key].length;
@@ -1219,7 +1222,7 @@ export default class Lysergic {
             }
           }
         }
-        return -x;
+        return -x / Math.E;
       case CostTypes.MEAN_ABSOLUTE_PERCENTAGE_ERROR:
         for (i = 0; i < predicted.length; i++) {
           x += Math.abs((predicted[i] - target[i]) / Math.max(target[i], 1e-15));

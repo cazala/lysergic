@@ -8,6 +8,7 @@ import { mul, number, div, sum, exp, neg, sub, conditional, gt, ln, abs, pow } f
 import { ExpressionNode } from "./nodes";
 
 export function buildActivationFunction(state: Variable, type: ActivationTypes): ExpressionNode {
+  // if (type & ActivationTypes._SPECIAL_LAYER_ACTIVATION_ & 128) return null;
   switch (type) {
     case ActivationTypes.LOGISTIC_SIGMOID:
       return div(number(1), sum(number(1), exp(neg(state))));
@@ -59,6 +60,7 @@ export function buildActivationFunction(state: Variable, type: ActivationTypes):
   return this.random() < chances && this.status === StatusTypes.TRAINING ? 0 : 1*/
 
 export function buildDerivativeFunction(state: Variable, activation: Variable, type: ActivationTypes): ExpressionNode {
+  if ((type & ActivationTypes._SPECIAL_LAYER_ACTIVATION_) != 0) return null;
   switch (type) {
     case ActivationTypes.LOGISTIC_SIGMOID:
       return mul(activation, sub(number(1), activation));
@@ -105,8 +107,6 @@ export function buildDerivativeFunction(state: Variable, activation: Variable, t
     /*case ActivationTypes.DROPOUT:
       const chances = this.state[unit]
       return this.random() < chances && this.status === StatusTypes.TRAINING ? 0 : 1*/
-    case ActivationTypes.MAXOUT:
-      return null;
   }
   return number(1);
 }
