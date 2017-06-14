@@ -44,27 +44,38 @@ export enum CostTypes {
 
 // -- Activation Types
 
+export const WHOLE_LAYER_ACTIVATION_KIND = 128;
+
 export enum ActivationTypes {
   IDENTITY = 0,
   LOGISTIC_SIGMOID = 1,
   TANH = 2,
-  RELU = 3,
-  DROPOUT = 4,
+  // 3 is free
+
   INVERSE_IDENTITY = 5,
   EXP = 6,
   SOFTPLUS = 7,
   SOFTSIGN = 8,
   GAUSSIAN = 9,
-  RELU_PLUSONE = 10,
   STEP = 11,
 
-  _SPECIAL_LAYER_ACTIVATION_ = 128,
+  // https://arxiv.org/pdf/1502.01852.pdf
+  RELU = 12,
+  PRELU = 13, // parametric ReLU => PReLU(x) = { x > 0 ? x : ax }
+  RELU_PLUSONE = 14, // f(x) = ReLU(x) + 1
+  ELU = 15,
+  PELU = 16,
 
-  AVG_POOLING = _SPECIAL_LAYER_ACTIVATION_ | 1,
-  MAX_POOLING = _SPECIAL_LAYER_ACTIVATION_ | 2,
-  MAXOUT = _SPECIAL_LAYER_ACTIVATION_ | 3,
-  SOFTMAX = _SPECIAL_LAYER_ACTIVATION_ | 4,
-  SHARPEN = _SPECIAL_LAYER_ACTIVATION_ | 5,
+
+
+  AVG_POOLING = WHOLE_LAYER_ACTIVATION_KIND | 1,
+  MAX_POOLING = WHOLE_LAYER_ACTIVATION_KIND | 2,
+  MAXOUT = WHOLE_LAYER_ACTIVATION_KIND | 3,
+  SOFTMAX = WHOLE_LAYER_ACTIVATION_KIND | 4,
+  SHARPEN = WHOLE_LAYER_ACTIVATION_KIND | 5,
+
+  // https://leonardoaraujosantos.gitbooks.io/artificial-inteligence/content/batch_norm_layer.html
+  BATCH_NORM = WHOLE_LAYER_ACTIVATION_KIND | 6
 }
 
 // -- Status Types

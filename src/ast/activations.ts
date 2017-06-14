@@ -3,12 +3,12 @@
 // https://nn.readthedocs.io/en/rtd/transfer/
 // https://math.stackexchange.com/questions/945871/derivative-of-softmax-loss-function
 
-import { Variable, ActivationTypes } from "../index";
+import { Variable, ActivationTypes, WHOLE_LAYER_ACTIVATION_KIND } from "../index";
 import { mul, number, div, sum, exp, neg, sub, conditional, gt, ln, abs, pow } from "./operations";
 import { ExpressionNode } from "./nodes";
 
 export function buildActivationFunction(state: Variable, type: ActivationTypes): ExpressionNode {
-  // if (type & ActivationTypes._SPECIAL_LAYER_ACTIVATION_ & 128) return null;
+  if (type & WHOLE_LAYER_ACTIVATION_KIND) return null;
   switch (type) {
     case ActivationTypes.LOGISTIC_SIGMOID:
       return div(number(1), sum(number(1), exp(neg(state))));
@@ -60,7 +60,7 @@ export function buildActivationFunction(state: Variable, type: ActivationTypes):
   return this.random() < chances && this.status === StatusTypes.TRAINING ? 0 : 1*/
 
 export function buildDerivativeFunction(state: Variable, activation: Variable, type: ActivationTypes): ExpressionNode {
-  if ((type & ActivationTypes._SPECIAL_LAYER_ACTIVATION_) != 0) return null;
+  if ((type & WHOLE_LAYER_ACTIVATION_KIND) != 0) return null;
   switch (type) {
     case ActivationTypes.LOGISTIC_SIGMOID:
       return mul(activation, sub(number(1), activation));
@@ -93,9 +93,6 @@ export function buildDerivativeFunction(state: Variable, activation: Variable, t
 
     case ActivationTypes.INVERSE_IDENTITY:
       return number(-1);
-
-    case ActivationTypes.DROPOUT:
-      return number(0);
 
     /*case ActivationTypes.MAX_POOLING:
       const inputUnit = this.inputsOf[unit][0]
