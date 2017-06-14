@@ -778,12 +778,12 @@ export default class Lysergic {
     // maximum = max(activations)
 
     // activation(i)' = (activation(i) - maximum)^E
-    // denominator = Σ activation'
 
     states.forEach(($, i) => {
       statement(assign(activations[i], exp(sub($, maximum))));
     });
 
+    // denominator = Σ activation'
     activations.forEach($ => statement(assignSum(denominator, $)));
 
     // activation(i) = activation(i) / denominator
