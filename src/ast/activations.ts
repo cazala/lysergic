@@ -3,9 +3,43 @@
 // https://nn.readthedocs.io/en/rtd/transfer/
 // https://math.stackexchange.com/questions/945871/derivative-of-softmax-loss-function
 
-import { Variable, ActivationTypes, WHOLE_LAYER_ACTIVATION_KIND } from "../index";
 import { mul, number, div, sum, exp, neg, sub, conditional, gt, ln, abs, pow } from "./operations";
 import { ExpressionNode } from "./nodes";
+import { Variable } from "../AST";
+
+export const WHOLE_LAYER_ACTIVATION_KIND = 128;
+
+export enum ActivationTypes {
+  IDENTITY = 0,
+  LOGISTIC_SIGMOID = 1,
+  TANH = 2,
+  // 3 is free
+
+  INVERSE_IDENTITY = 5,
+  EXP = 6,
+  SOFTPLUS = 7,
+  SOFTSIGN = 8,
+  GAUSSIAN = 9,
+  STEP = 11,
+
+  // https://arxiv.org/pdf/1502.01852.pdf
+  RELU = 12,
+  PRELU = 13, // parametric ReLU => PReLU(x) = { x > 0 ? x : ax }
+  RELU_PLUSONE = 14, // f(x) = ReLU(x) + 1
+  ELU = 15,
+  PELU = 16,
+
+
+
+  AVG_POOLING = WHOLE_LAYER_ACTIVATION_KIND | 1,
+  MAX_POOLING = WHOLE_LAYER_ACTIVATION_KIND | 2,
+  MAXOUT = WHOLE_LAYER_ACTIVATION_KIND | 3,
+  SOFTMAX = WHOLE_LAYER_ACTIVATION_KIND | 4,
+  SHARPEN = WHOLE_LAYER_ACTIVATION_KIND | 5,
+
+  // https://leonardoaraujosantos.gitbooks.io/artificial-inteligence/content/batch_norm_layer.html
+  BATCH_NORM = WHOLE_LAYER_ACTIVATION_KIND | 6
+}
 
 export function buildActivationFunction(state: Variable, type: ActivationTypes): ExpressionNode {
   if (type & WHOLE_LAYER_ACTIVATION_KIND) return null;
