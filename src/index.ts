@@ -1,9 +1,17 @@
+import Topology = require("./Topology");
+import AST = require("./AST");
+import Heap = require("./Heap");
+import nodes = require("./ast/nodes");
+import Activations = require('./ast/activations');
 
-import Engine from "./Engine";
-import Topology, { ITopoloyUnitOptions } from "./Topology";
-import AST, { Variable } from "./AST";
-import Heap from "./Heap";
-import { DocumentNode } from "./ast/nodes";
+export {
+  Lysergic,
+  Topology,
+  AST,
+  Heap,
+  Activations,
+  nodes
+};
 
 export enum LysergicStatus {
   UNLOCKED,
@@ -15,24 +23,45 @@ export interface ILysergicOptions {
   bias?: boolean;
 }
 
-export default class Lysergic {
+export enum StatusTypes {
+  IDLE,
+  INIT,
+  REVERSE_INIT,
+  ACTIVATING,
+  PROPAGATING,
+  TRAINING,
+  BUILDING
+}
 
-  engine: Engine = null;
-  topology: Topology = null;
-  ast: AST = null;
-  heap: Heap = null;
+export default class Lysergic {
+  static RandomGenerator = () => Math.random() * 2 - 1;
+
+  learningRate = 0.1;
+
+  engineStatus: StatusTypes = StatusTypes.IDLE;
+
+  topology: Topology.Topology = null;
+  ast: AST.AST = null;
+  heap: Heap.Heap = null;
   status: LysergicStatus = LysergicStatus.UNLOCKED;
 
+  random: () => number = Lysergic.RandomGenerator;
+
   constructor(options: ILysergicOptions = {}) {
-    this.engine = new Engine(options);
-    this.topology = new Topology({ engine: this.engine });
-    this.ast = new AST({ topology: this.topology });
-    this.heap = new Heap({ ast: this.ast });
+    this.topology = new Topology.Topology({ engine: this, bias: options.bias });
+    this.ast = new AST.AST({ topology: this.topology });
+    this.heap = new Heap.Heap({ ast: this.ast });
     this.status = LysergicStatus.UNLOCKED;
+
+    // if using bias, create a bias unit, with a fixed activation of 1
+    if (options.bias) {
+      this.topology.biasUnit = this.topology.addUnit();
+      this.ast.setVariable('activation', this.topology.biasUnit, 1);
+    }
   }
 
-  addUnit(options: ITopoloyUnitOptions) {
-    this.topology.addUnit(options);
+  addUnit(options: Topology.ITopoloyUnitOptions) {
+    return this.topology.addUnit(options);
   }
 
   addConnection(from, to, weight) {
@@ -43,70 +72,70 @@ export default class Lysergic {
     this.topology.addGate(from, to, gater);
   }
 
-  build() {
+  async build() {
     if (this.status === LysergicStatus.UNLOCKED) {
+      this.topology.normalize();
       this.ast.build();
-      this.heap.build();
+      await this.heap.build();
       this.status = LysergicStatus.LOCKED;
     }
   }
 
-  reset() {
-    if (this.status === LysergicStatus.LOCKED) {
-      this.ast.reset();
-      this.heap.reset();
-      this.status = LysergicStatus.UNLOCKED;
-    }
-  }
+  getAST(): nodes.DocumentNode {
+    if (this.status == LysergicStatus.UNLOCKED)
+      throw new Error('You need to build the network first');
 
-  getAST(): DocumentNode {
-    this.build();
     return this.ast.getDocument();
   }
 
-  getVariables(): Variable[] {
-    this.build();
+  getVariables(): AST.nodes.Variable[] {
     return this.ast.getVariables();
   }
 
-  getBuffer(): ArrayBuffer {
-    this.build();
+  async getBuffer(): Promise<ArrayBuffer> {
+    if (this.status === LysergicStatus.UNLOCKED) {
+      throw new Error('You need to build the network first');
+    }
+
     return this.heap.buffer;
   }
 
-  getMemory(): Float64Array {
-    this.build();
+  async getMemory(): Promise<Float64Array> {
+    if (this.status === LysergicStatus.UNLOCKED) {
+      throw new Error('You need to build the network first');
+    }
     return this.heap.memory;
   }
 
-  setInputs(inputs: number[]) {
-    this.heap.setInputs(inputs);
+  async setInputs(inputs: number[]) {
+    if (this.status === LysergicStatus.UNLOCKED) {
+      throw new Error('You need to build the network first');
+    }
+    await this.heap.setInputs(inputs);
   }
 
-  getOutputs(): number[] {
-    return this.heap.getOutputs();
+  async getOutputs(): Promise<ArrayLike<number>> {
+    if (this.status === LysergicStatus.UNLOCKED) {
+      throw new Error('You need to build the network first');
+    }
+    return await this.heap.getOutputs();
   }
 
-  setTargets(targets: number[]) {
-    this.heap.setTargets(targets);
+  async setTargets(targets: number[]) {
+    if (this.status === LysergicStatus.UNLOCKED) {
+      throw new Error('You need to build the network first');
+    }
+    await this.heap.setTargets(targets);
   }
 
   toJSON(asString: boolean = false): object | string {
+    let variables = {};
+
+    Object.keys(this.ast.variables).map($ => variables[$] = this.ast.variables[$].initialValue);
+
     const stringified = JSON.stringify({
-      learningRate: this.engine.learningRate,
-      size: this.engine.size,
-      state: this.engine.state,
-      weight: this.engine.weight,
-      gain: this.engine.gain,
-      activation: this.engine.activation,
-      derivative: this.engine.derivative,
-      elegibilityTrace: this.engine.elegibilityTrace,
-      extendedElegibilityTrace: this.engine.extendedElegibilityTrace,
-      errorResponsibility: this.engine.errorResponsibility,
-      projectedErrorResponsibility: this.engine.projectedErrorResponsibility,
-      gatedErrorResponsibility: this.engine.gatedErrorResponsibility,
-      activationFunction: this.engine.activationFunction,
-      derivativeTerm: this.engine.derivativeTerm,
+      learningRate: this.learningRate,
+      variables,
       biasUnit: this.topology.biasUnit,
       inputsOf: this.topology.inputsOf,
       projectedBy: this.topology.projectedBy,
@@ -118,7 +147,8 @@ export default class Lysergic {
       inputSet: this.topology.inputSet,
       connections: this.topology.connections,
       gates: this.topology.gates,
-      layers: this.topology.layers
+      layers: this.topology.layers,
+      activationFunction: this.topology.activationFunction
     });
     return asString ? stringified : JSON.parse(stringified);
   }
@@ -126,20 +156,14 @@ export default class Lysergic {
   static fromJSON(json: string | object) {
     const data = typeof json === 'string' ? JSON.parse(json) : json;
     const compiler = new Lysergic();
-    compiler.engine.learningRate = data.learningRate;
-    compiler.engine.size = data.size;
-    compiler.engine.state = data.state;
-    compiler.engine.weight = data.weight;
-    compiler.engine.gain = data.gain;
-    compiler.engine.activation = data.activation;
-    compiler.engine.derivative = data.derivative;
-    compiler.engine.elegibilityTrace = data.elegibilityTrace;
-    compiler.engine.extendedElegibilityTrace = data.extendedElegibilityTrace;
-    compiler.engine.errorResponsibility = data.errorResponsibility;
-    compiler.engine.projectedErrorResponsibility = data.projectedErrorResponsibility;
-    compiler.engine.gatedErrorResponsibility = data.gatedErrorResponsibility;
-    compiler.engine.activationFunction = data.activationFunction;
-    compiler.engine.derivativeTerm = data.derivativeTerm;
+    compiler.learningRate = data.learningRate;
+
+    const variables = data.variables;
+
+    Object.keys(variables).map($ => {
+      compiler.ast.setVariable($, variables[$]);
+    });
+
     compiler.topology.biasUnit = data.biasUnit;
     compiler.topology.inputsOf = data.inputsOf;
     compiler.topology.projectedBy = data.projectedBy;
@@ -152,6 +176,7 @@ export default class Lysergic {
     compiler.topology.connections = data.connections;
     compiler.topology.gates = data.gates;
     compiler.topology.layers = data.layers;
+    compiler.topology.activationFunction = data.activationFunction;
     return compiler;
   }
 

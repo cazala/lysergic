@@ -4,8 +4,7 @@
 // https://math.stackexchange.com/questions/945871/derivative-of-softmax-loss-function
 
 import { mul, number, div, sum, exp, neg, sub, conditional, gt, ln, abs, pow } from "./operations";
-import { ExpressionNode } from "./nodes";
-import { Variable } from "../AST";
+import { ExpressionNode, Variable } from "./nodes";
 
 export const WHOLE_LAYER_ACTIVATION_KIND = 128;
 

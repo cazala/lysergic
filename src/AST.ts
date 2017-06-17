@@ -1,51 +1,80 @@
-import { DocumentNode, HeapReferenceNode, FunctionNode, ExpressionNode, BlockNode } from "./ast/nodes";
+declare var console;
+
+import nodes = require("./ast/nodes");
 import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max, assignSub } from "./ast/operations";
 import { buildActivationFunction, buildDerivativeFunction, ActivationTypes } from "./ast/activations";
-import Topology from "./Topology";
+import { Topology } from "./Topology";
 
 export interface Dictionary<T> {
   [key: string]: T;
 }
 
-export class Variable extends HeapReferenceNode {
-  constructor(
-    public id: number,
-    public key: string,
-    public initialValue: number,
-    public tag: string
-  ) {
-    super(id);
-  }
-}
+export { nodes };
+
 
 export interface IASTOptions {
-  topology?: Topology;
+  topology: Topology;
 }
 
-export default class AST {
+export class AST {
+
+  static nodes = nodes;
 
   topology: Topology;
-  count: number = 0;
-  variables: Dictionary<Variable> = {};
-  inputs: Variable[] = [];
-  outputs: Variable[] = [];
-  targets: Variable[] = [];
-  document: DocumentNode = document();
+  allocationCount: number = 0;
+  variables: Dictionary<nodes.Variable> = {};
+  inputs: nodes.Variable[] = [];
+  outputs: nodes.Variable[] = [];
+  targets: nodes.Variable[] = [];
+  document: nodes.DocumentNode = document();
 
-  constructor({ topology = new Topology() }: IASTOptions = {}) {
+  constructor(options: IASTOptions) {
+    const { topology } = options;
     this.topology = topology;
   }
 
-  private alloc(key: string, value: number, tag: string = null): Variable {
+  private alloc(key: string, value: number, tag: string = null): nodes.Variable {
     if (!(key in this.variables)) {
-      this.variables[key] = new Variable(this.count++, key, value, tag);
+      this.variables[key] = new nodes.Variable(this.allocationCount++, key, value, tag);
     }
+    this.variables[key].initialValue = value || 0;
     return this.variables[key];
   }
 
+  setVariable(key: string, value: number): nodes.Variable;
+  setVariable(key: string, i: number, value: number): nodes.Variable;
+  setVariable(key: string, i: number, j: number, value: number): nodes.Variable;
+  setVariable(key: string, i: number, j: number, k: number, value: number): nodes.Variable;
+  setVariable(key: string, ...indexes: number[]) {
+    let value = indexes.pop();
+    const variableKey = key + indexes.map($ => `[${$}]`).join('');
+    return this.alloc(variableKey, value);
+  }
+
+  getVariable(key: string): nodes.Variable;
+  getVariable(key: string, i: number): nodes.Variable;
+  getVariable(key: string, i: number, j: number): nodes.Variable;
+  getVariable(key: string, i: number, j: number, k: number): nodes.Variable;
+  getVariable(key: string, ...indexes: number[]) {
+    const variableKey = key + indexes.map($ => `[${$}]`).join('');
+    let variable = this.variables[variableKey];
+    if (!variable) {
+      console.log(Object.keys(this.variables));
+      throw new Error(variableKey + ' is not declared');
+    }
+    return variable;
+  }
+
+
+  hasVariable(key: string): boolean;
+  hasVariable(key: string, i: number): boolean;
+  hasVariable(key: string, i: number, j: number): boolean;
+  hasVariable(key: string, i: number, j: number, k: number): boolean;
+  hasVariable(key: string, ...indexes: number[]) {
+    return !!this.variables[key + indexes.map($ => `[${$}]`).join('')];
+  }
+
   reset(): void {
-    this.count = 0;
-    this.variables = {};
     this.inputs = [];
     this.outputs = [];
     this.targets = [];
@@ -65,13 +94,11 @@ export default class AST {
     // build AST
     this.alloc(`learningRate`, this.topology.engine.learningRate);
     this.alloc(`seed`, this.topology.engine.random());
-    const activationFunction: FunctionNode = func('activate');
+    const activationFunction: nodes.FunctionNode = func('activate');
     this.document.addNode(activationFunction);
-    const propagationFunction: FunctionNode = func('propagate');
+    const propagationFunction: nodes.FunctionNode = func('propagate');
     this.document.addNode(propagationFunction);
-    if (this.topology.biasUnit !== null) {
-      this.alloc(`activation[${this.topology.biasUnit}]`, engine.activation[this.topology.biasUnit]);
-    }
+
     for (let layer = 0; layer < layers.length; layer++) {
       if (layer != 0) {
         for (let unit = 0; unit < layers[layer].length; unit++) {
@@ -80,10 +107,10 @@ export default class AST {
       }
 
       for (let unit = 0; unit < layers[layer].length; unit++) {
-        let activationJ: Variable;
+        let activationJ: nodes.Variable;
         switch (layer) {
           case 0:
-            activationJ = this.alloc(`activation[${layers[layer][unit]}]`, engine.activation[layers[layer][unit]], 'input');
+            activationJ = this.getVariable('activation', layers[layer][unit]); // TODO: Tag, input
             this.inputs.push(activationJ);
             break;
           case outputLayer:
@@ -108,7 +135,7 @@ export default class AST {
       let softmaxUnits = [];
 
       for (let unit = 0; unit < layers[layer].length; unit++) {
-        const type = engine.activationFunction[layers[layer][unit]];
+        const type = engine.topology.activationFunction[layers[layer][unit]];
 
         if (type == ActivationTypes.SOFTMAX) {
           softmaxUnits.push(layers[layer][unit]);
@@ -144,31 +171,30 @@ export default class AST {
     this.targets.reverse();
   }
 
-  private getFunctionBodyNode(functionName: string): BlockNode {
+  private getFunctionBodyNode(functionName: string): nodes.BlockNode {
     // grab the function node
-    let activationFunction: FunctionNode = this.document.children.find(node =>
-      node instanceof FunctionNode && node.name === functionName
-    ) as FunctionNode;
+    let activationFunction: nodes.FunctionNode = this.document.children.find(node =>
+      node instanceof nodes.FunctionNode && node.name === functionName
+    ) as nodes.FunctionNode;
 
     return activationFunction.body;
   }
 
-  private buildActivationDerivative(j: number, layerJ: number, targetFunction: string = 'activate'): Variable {
+  private buildActivationDerivative(j: number, layerJ: number, targetFunction: string = 'activate'): nodes.Variable {
 
     const engine = this.topology.engine;
 
     const layerNode = this.getFunctionBodyNode(targetFunction);
 
-    const blockNode = new BlockNode();
+    const blockNode = new nodes.BlockNode();
     blockNode.name = `Activation derivative ${layerJ}:${j}`;
 
     layerNode.addNode(blockNode);
 
     // helper to add a statement to the unit node
-    const statement = (node: ExpressionNode) => blockNode.addNode(node);
+    const statement = (node: nodes.ExpressionNode) => blockNode.addNode(node);
 
 
-    const stateJ = this.alloc(`state[${j}]`, engine.state[j]);
 
     /*====================================================================================================================
 
@@ -177,10 +203,11 @@ export default class AST {
     y'[j] = f'(j)
 
     ====================================================================================================================*/
-    const activationJ = this.alloc(`activation[${j}]`, engine.activation[j], 'output');
-    const derivativeJ = this.alloc(`derivative[${j}]`, engine.derivative[j]);
+    const stateJ = this.getVariable(`state`, j);
+    const activationJ = this.getVariable(`activation`, j); // TODO: tag output
+    const derivativeJ = this.getVariable(`derivative`, j);
 
-    const derivativeFunction = buildDerivativeFunction(stateJ, activationJ, engine.activationFunction[j]);
+    const derivativeFunction = buildDerivativeFunction(stateJ, activationJ, engine.topology.activationFunction[j]);
 
     if (derivativeFunction) {
       statement(assign(derivativeJ, derivativeFunction));
@@ -191,23 +218,20 @@ export default class AST {
   }
 
   private buildActivationTraces(j: number, layerJ: number) {
-
     const topology = this.topology;
-    const engine = this.topology.engine;
 
     const layerNode = this.getFunctionBodyNode('activate');
 
-    const blockNode = new BlockNode();
+    const blockNode = new nodes.BlockNode();
     blockNode.name = `Traces of ${layerJ}:${j}`;
 
     layerNode.addNode(blockNode);
 
     // helper to add a statement to the unit node
-    const statement = (node: ExpressionNode) => blockNode.addNode(node);
+    const statement = (node: nodes.ExpressionNode) => blockNode.addNode(node);
 
-
-    const activationJ = this.alloc(`activation[${j}]`, engine.activation[j], 'output');
-    const derivativeJ = this.alloc(`derivative[${j}]`, engine.derivative[j]);
+    const activationJ = this.getVariable(`activation`, j); // TODO: tag output
+    const derivativeJ = this.getVariable(`derivative`, j);
 
     const isSelfConnected = topology.connections.some(connection => connection.to === j && connection.from === j);
     const isSelfConnectionGated = topology.gates.some(gate => gate.to === j && gate.from === j);
@@ -222,16 +246,16 @@ export default class AST {
     ====================================================================================================================*/
     for (h = 0; h < topology.inputSet[j].length; h++) {
       i = topology.inputSet[j][h];
-      const elegibilityTraceJI = this.alloc(`elegibilityTrace[${j}][${i}]`, engine.elegibilityTrace[j][i]);
-      const activationI = this.alloc(`activation[${i}]`, engine.activation[i]);
-      const gainJI = this.alloc(`gain[${j}][${i}]`, engine.gain[j][i]);
+      const elegibilityTraceJI = this.getVariable(`elegibilityTrace`, j, i);
+      const activationI = this.getVariable(`activation`, i);
+      const gainJI = this.getVariable(`gain`, j, i);
 
       if (isSelfConnected && isSelfConnectionGated) {
-        const gainJJ = this.alloc(`gain[${j}][${j}]`, engine.gain[j][j]);
-        const weightJJ = this.alloc(`weight[${j}][${j}]`, engine.weight[j][j]);
+        const gainJJ = this.getVariable(`gain`, j, j);
+        const weightJJ = this.getVariable(`weight`, j, j);
         statement(assign(elegibilityTraceJI, sum(mul(mul(gainJJ, weightJJ), elegibilityTraceJI), mul(gainJI, activationI))));
       } else if (isSelfConnected) {
-        const weightJJ = this.alloc(`weight[${j}][${j}]`, engine.weight[j][j]);
+        const weightJJ = this.getVariable(`weight`, j, j);
         statement(assign(elegibilityTraceJI, sum(mul(weightJJ, elegibilityTraceJI), mul(gainJI, activationI))));
       } else {
         statement(assign(elegibilityTraceJI, mul(gainJI, activationI)));
@@ -259,8 +283,8 @@ export default class AST {
 
         let keepBigParenthesisTerm = false;
         let initializeBigParenthesisTerm = false;
-        if (isSelfConnectedK && engine.derivativeTerm[k][j]) {
-          const stateK = this.alloc(`state[${k}]`, engine.state[k]);
+        if (isSelfConnectedK && this.hasVariable('derivativeTerm', k, j)) {
+          const stateK = this.getVariable(`state`, k);
           statement(assign(bigParenthesisTermResult, stateK));
           keepBigParenthesisTerm = true;
         } else {
@@ -275,25 +299,25 @@ export default class AST {
               statement(assign(bigParenthesisTermResult, number(0)));
               initializeBigParenthesisTerm = false;
             }
-            const weightKA = this.alloc(`weight[${k}][${a}]`, engine.weight[k][a]);
-            const activationA = this.alloc(`activation[${a}]`, engine.activation[a]);
+            const weightKA = this.getVariable(`weight`, k, a);
+            const activationA = this.getVariable(`activation`, a);
             statement(assignSum(bigParenthesisTermResult, mul(weightKA, activationA)));
             keepBigParenthesisTerm = true;
           }
         }
 
-        const extendedElegibilityTraceJIK = this.alloc(`extendedElegibilityTrace[${j}][${i}][${k}]`, engine.extendedElegibilityTrace[j][i][k]);
+        const extendedElegibilityTraceJIK = this.getVariable(`extendedElegibilityTrace`, j, i, k);
 
         if (isSelfConnectedK && isSelfConnectionGatedK) {
-          const gainKK = this.alloc(`gain[${k}][${k}]`, engine.gain[k][k]);
-          const weightKK = this.alloc(`weight[${k}][${k}]`, engine.weight[k][k]);
+          const gainKK = this.getVariable(`gain`, k, k);
+          const weightKK = this.getVariable(`weight`, k, k);
           if (keepBigParenthesisTerm) {
             statement(assign(extendedElegibilityTraceJIK, sum(mul(mul(gainKK, weightKK), extendedElegibilityTraceJIK), mul(mul(derivativeJ, elegibilityTraceJI), bigParenthesisTermResult))));
           } else {
             statement(assign(extendedElegibilityTraceJIK, mul(mul(gainKK, weightKK), extendedElegibilityTraceJIK)));
           }
         } else if (isSelfConnectedK) {
-          const weightKK = this.alloc(`weight[${k}][${k}]`, engine.weight[k][k]);
+          const weightKK = this.getVariable(`weight`, k, k);
           if (keepBigParenthesisTerm) {
             statement(assign(extendedElegibilityTraceJIK, sum(mul(weightKK, extendedElegibilityTraceJIK), mul(mul(derivativeJ, elegibilityTraceJI), bigParenthesisTermResult))));
           } else {
@@ -312,35 +336,32 @@ export default class AST {
       to = topology.gatedBy[j][h];
       for (g = 0; g < topology.inputsOfGatedBy[to][j].length; g++) {
         from = topology.inputsOfGatedBy[to][j][g];
-        const gainToFrom = this.alloc(`gain[${to}][${from}]`, engine.gain[to][from]);
+        const gainToFrom = this.getVariable(`gain`, to, from);
         statement(assign(gainToFrom, activationJ));
       }
     }
   }
 
   private softmaxUnits(units: number[], layerJ: number) {
-
-    const engine = this.topology.engine;
-
     const layerNode = this.getFunctionBodyNode('activate');
 
-    const blockNode = new BlockNode();
+    const blockNode = new nodes.BlockNode();
     blockNode.name = `Softmax ${layerJ}`;
 
     layerNode.addNode(blockNode);
 
     // helper to add a statement to the unit node
-    const statement = (node: ExpressionNode) => blockNode.addNode(node);
+    const statement = (node: nodes.ExpressionNode) => blockNode.addNode(node);
 
     // --------- VARS ---------
 
-    const activations: Variable[] = units.map($ => this.alloc(`activation[${$}]`, engine.activation[$]));
-    const derivatives: Variable[] = units.map($ => this.alloc(`derivative[${$}]`, engine.derivative[$]));
-    const states: Variable[] = units.map($ => this.alloc(`state[${$}]`, engine.derivative[$]));
+    const activations: nodes.Variable[] = units.map($ => this.getVariable(`activation`, $));
+    const derivatives: nodes.Variable[] = units.map($ => this.getVariable(`derivative`, $));
+    const states: nodes.Variable[] = units.map($ => this.getVariable(`state`, $));
 
     const maximum = this.alloc(`softmaxMaximum[${layerJ}]`, 0);
     const denominator = this.alloc(`softmaxDenominator[${layerJ}]`, 0);
-    const nominators: Variable[] = [];
+    const nominators: nodes.Variable[] = [];
 
     units.forEach((unit, i) => {
       const nominator = this.alloc(`softmaxNominators[${layerJ}][${unit}]`, 0);
@@ -402,20 +423,18 @@ export default class AST {
   }
 
 
-  private buildComputeState(j: number, layerJ: number, targetFunction: string = 'activate'): Variable {
-
+  private buildComputeState(j: number, layerJ: number, targetFunction: string = 'activate'): nodes.Variable {
     const topology = this.topology;
-    const engine = this.topology.engine;
 
     const layerNode = this.getFunctionBodyNode(targetFunction);
 
-    const blockNode = new BlockNode();
+    const blockNode = new nodes.BlockNode();
     blockNode.name = `ActivationState ${layerJ}:${j}`;
 
     layerNode.addNode(blockNode);
 
     // helper to add a statement to the unit node
-    const statement = (node: ExpressionNode) => blockNode.addNode(node);
+    const statement = (node: nodes.ExpressionNode) => blockNode.addNode(node);
 
     /*====================================================================================================================
 
@@ -426,16 +445,17 @@ export default class AST {
     ====================================================================================================================*/
     let i, h;
 
-    const stateJ = this.alloc(`state[${j}]`, engine.state[j]);
+    const stateJ = this.getVariable(`state`, j);
+
     const isSelfConnected = topology.connections.some(connection => connection.to === j && connection.from === j);
     const isSelfConnectionGated = topology.gates.some(gate => gate.to === j && gate.from === j);
 
     if (isSelfConnected && isSelfConnectionGated) {
-      const gainJJ = this.alloc(`gain[${j}][${j}]`, engine.gain[j][j]);
-      const weightJJ = this.alloc(`weight[${j}][${j}]`, engine.weight[j][j]);
+      const gainJJ = this.getVariable(`gain`, j, j);
+      const weightJJ = this.getVariable(`weight`, j, j);
       statement(assignMul(stateJ, mul(gainJJ, weightJJ)));
     } else if (isSelfConnected) {
-      const weightJJ = this.alloc(`weight[${j}][${j}]`, engine.weight[j][j]);
+      const weightJJ = this.getVariable(`weight`, j, j);
       statement(assignMul(stateJ, weightJJ));
     } else {
       statement(assign(stateJ, number(0)));
@@ -445,15 +465,15 @@ export default class AST {
       i = topology.inputSet[j][h];
       const isGated = topology.gates.some(gate => gate.from === i && gate.to === j);
       if (isGated) {
-        const stateJ = this.alloc(`state[${j}]`, engine.state[j]);
-        const gainJI = this.alloc(`gain[${j}][${i}]`, engine.gain[j][i]);
-        const weightJI = this.alloc(`weight[${j}][${i}]`, engine.weight[j][i]);
-        const activationI = this.alloc(`activation[${i}]`, engine.activation[i]);
+        const stateJ = this.getVariable(`state`, j);
+        const gainJI = this.getVariable(`gain`, j, i);
+        const weightJI = this.getVariable(`weight`, j, i);
+        const activationI = this.getVariable(`activation`, i);
         statement(assignSum(stateJ, mul(mul(gainJI, weightJI), activationI)));
       } else {
-        const stateJ = this.alloc(`state[${j}]`, engine.state[j]);
-        const weightJI = this.alloc(`weight[${j}][${i}]`, engine.weight[j][i]);
-        const activationI = this.alloc(`activation[${i}]`, engine.activation[i]);
+        const stateJ = this.getVariable(`state`, j);
+        const weightJI = this.getVariable(`weight`, j, i);
+        const activationI = this.getVariable(`activation`, i);
         statement(assignSum(stateJ, mul(weightJI, activationI)));
       }
     }
@@ -462,19 +482,19 @@ export default class AST {
     return stateJ;
   }
 
-  private buildActivation(j: number, layerJ: number, targetFunction: string = 'activate'): Variable {
+  private buildActivation(j: number, layerJ: number, targetFunction: string = 'activate'): nodes.Variable {
 
     const engine = this.topology.engine;
 
     const layerNode = this.getFunctionBodyNode(targetFunction);
 
-    const blockNode = new BlockNode();
+    const blockNode = new nodes.BlockNode();
     blockNode.name = `Activation ${layerJ}:${j}`;
 
     layerNode.addNode(blockNode);
 
     // helper to add a statement to the unit node
-    const statement = (node: ExpressionNode) => blockNode.addNode(node);
+    const statement = (node: nodes.ExpressionNode) => blockNode.addNode(node);
     /*====================================================================================================================
 
     Eq. 16: compute activation of j (and cache derivative for later use)
@@ -483,11 +503,10 @@ export default class AST {
     y'[j] = f'(j)
 
     ====================================================================================================================*/
-    const stateJ = this.alloc(`state[${j}]`, engine.state[j]);
+    const stateJ = this.getVariable(`state`, j);
+    const activationJ = this.getVariable(`activation`, j); // TODO: tag output
 
-    const activationJ = this.alloc(`activation[${j}]`, engine.activation[j], 'output');
-
-    const activationFunction = buildActivationFunction(stateJ, engine.activationFunction[j]);
+    const activationFunction = buildActivationFunction(stateJ, engine.topology.activationFunction[j]);
 
     if (activationFunction) {
       statement(assign(activationJ, activationFunction));
@@ -497,20 +516,18 @@ export default class AST {
     return activationJ;
   }
 
-  private buildPropagation(j: number, layerJ: number, targetJ?: Variable) {
-
+  private buildPropagation(j: number, layerJ: number, targetJ?: nodes.Variable) {
     const topology = this.topology;
-    const engine = this.topology.engine;
 
     const layerNode = this.getFunctionBodyNode('propagate');
 
-    const blockNode = new BlockNode();
+    const blockNode = new nodes.BlockNode();
     blockNode.name = `Propagation ${layerJ}:${j}`;
 
     layerNode.addNode(blockNode);
 
     // helper to add a statement to the unit node
-    const statement = (node: ExpressionNode) => blockNode.addNode(node);
+    const statement = (node: nodes.ExpressionNode) => blockNode.addNode(node);
 
     // step 1: compute error responsibility (δ) for j
 
@@ -527,9 +544,9 @@ export default class AST {
     ====================================================================================================================*/
     if (typeof targetJ !== 'undefined') {
       hasProjectedError = true;
-      const errorResponsibilityJ = this.alloc(`errorResponsibility[${j}]`, engine.errorResponsibility[j]);
-      const projectedErrorResponsibilityJ = this.alloc(`projectedErrorResponsibility[${j}]`, engine.projectedErrorResponsibility[j]);
-      const activationJ = this.alloc(`activation[${j}]`, engine.activation[j]);
+      const errorResponsibilityJ = this.getVariable(`errorResponsibility`, j);
+      const projectedErrorResponsibilityJ = this.getVariable(`projectedErrorResponsibility`, j);
+      const activationJ = this.getVariable(`activation`, j);
       statement(assign(errorResponsibilityJ, sub(targetJ, activationJ)));
       statement(assign(projectedErrorResponsibilityJ, errorResponsibilityJ));
     } else {
@@ -540,24 +557,24 @@ export default class AST {
       δP[j] = df(j) * Σ(P[j], k => δ[k] * g[k][j] * w[k][j]);
 
       ====================================================================================================================*/
-      const projectedErrorResponsibilityJ = this.alloc(`projectedErrorResponsibility[${j}]`, engine.projectedErrorResponsibility[j]);
+      const projectedErrorResponsibilityJ = this.getVariable(`projectedErrorResponsibility`, j);
       if (hasProjectedError) {
         statement(assign(projectedErrorResponsibilityJ, number(0)));
       }
       for (h = 0; h < topology.projectionSet[j].length; h++) {
         k = topology.projectionSet[j][h];
-        const errorResponsibilityK = this.alloc(`errorResponsibility[${k}]`, engine.errorResponsibility[k]);
+        const errorResponsibilityK = this.getVariable(`errorResponsibility`, k);
         const isGated = topology.gates.some(gate => gate.to === k && gate.from === j);
         if (isGated) {
-          const weightKJ = this.alloc(`weight[${k}][${j}]`, engine.weight[k][j]);
-          const gainKJ = this.alloc(`gain[${k}][${j}]`, engine.gain[k][j]);
+          const weightKJ = this.getVariable(`weight`, k, j);
+          const gainKJ = this.getVariable(`gain`, k, j);
           statement(assignSum(projectedErrorResponsibilityJ, mul(mul(gainKJ, weightKJ), errorResponsibilityK)));
         } else {
-          const weightKJ = this.alloc(`weight[${k}][${j}]`, engine.weight[k][j]);
+          const weightKJ = this.getVariable(`weight`, k, j);
           statement(assignSum(projectedErrorResponsibilityJ, mul(weightKJ, errorResponsibilityK)));
         }
       }
-      const derivativeJ = this.alloc(`derivative[${j}]`, engine.derivative[j]);
+      const derivativeJ = this.getVariable(`derivative`, j);
       if (hasProjectedError) {
         statement(assignMul(projectedErrorResponsibilityJ, derivativeJ));
       }
@@ -574,7 +591,7 @@ export default class AST {
       bigParenthesisTerm: (k, j) => dt * w[k][k] * s[k] + Σ(units.filter(a => a !== k), a => w[k][a] * y[a])
 
       ====================================================================================================================*/
-      const gatedErrorResponsibilityJ = this.alloc(`gatedErrorResponsibility[${j}]`, engine.gatedErrorResponsibility[j]);
+      const gatedErrorResponsibilityJ = this.getVariable(`gatedErrorResponsibility`, j);
       if (hasGatedError) {
         statement(assignMul(gatedErrorResponsibilityJ, number(0)));
       }
@@ -586,8 +603,8 @@ export default class AST {
         let keepBigParenthesisTerm = false;
         let initializeBigParenthesisTerm = false;
 
-        if (isSelfConnectedK && engine.derivativeTerm[k][j]) {
-          const stateK = this.alloc(`state[${k}]`, engine.state[k]);
+        if (isSelfConnectedK && this.hasVariable('derivativeTerm', k, j)) {
+          const stateK = this.getVariable(`state`, k);
           statement(assign(bigParenthesisTermResult, stateK));
           keepBigParenthesisTerm = true;
         } else {
@@ -600,14 +617,14 @@ export default class AST {
               statement(assign(bigParenthesisTermResult, number(0)));
               initializeBigParenthesisTerm = false;
             }
-            const weightKA = this.alloc(`weight[${k}][${a}]`, engine.weight[k][a]);
-            const activationA = this.alloc(`activation[${a}]`, engine.activation[a]);
+            const weightKA = this.getVariable(`weight`, k, a);
+            const activationA = this.getVariable(`activation`, a);
             statement(assignSum(bigParenthesisTermResult, mul(weightKA, activationA)));
             keepBigParenthesisTerm = true;
           }
         }
         if (keepBigParenthesisTerm) {
-          const errorResponsibilityK = this.alloc(`errorResponsibility[${k}]`, engine.errorResponsibility[k]);
+          const errorResponsibilityK = this.getVariable(`errorResponsibility`, k);
           statement(assignSum(gatedErrorResponsibilityJ, mul(errorResponsibilityK, bigParenthesisTermResult)));
         }
       }
@@ -622,7 +639,7 @@ export default class AST {
       δ[j] = δP[j] + δG[j];
 
       ====================================================================================================================*/
-      const errorResponsibilityJ = this.alloc(`errorResponsibility[${j}]`, engine.errorResponsibility[j]);
+      const errorResponsibilityJ = this.getVariable(`errorResponsibility`, j);
       if (hasProjectedError && hasGatedError) {
         statement(assign(errorResponsibilityJ, sum(projectedErrorResponsibilityJ, gatedErrorResponsibilityJ)));
       } else if (hasProjectedError) {
@@ -647,25 +664,25 @@ export default class AST {
       if (hasProjectedError && hasGatedError) {
         i = topology.inputSet[j][h];
         const Δw = this.alloc(`Δw`, null);
-        const projectedErrorResponsibilityJ = this.alloc(`projectedErrorResponsibility[${j}]`, engine.projectedErrorResponsibility[j]);
-        const elegibilityTraceJI = this.alloc(`elegibilityTrace[${j}][${i}]`, engine.elegibilityTrace[j][i]);
+        const projectedErrorResponsibilityJ = this.getVariable(`projectedErrorResponsibility`, j);
+        const elegibilityTraceJI = this.getVariable(`elegibilityTrace`, j, i);
         statement(assign(Δw, mul(projectedErrorResponsibilityJ, elegibilityTraceJI)));
         for (g = 0; g < topology.gateSet[j].length; g++) {
           k = topology.gateSet[j][g];
-          const errorResponsibilityK = this.alloc(`errorResponsibility[${k}]`, engine.errorResponsibility[k]);
-          const extendedElegibilityTraceJIK = this.alloc(`extendedElegibilityTrace[${j}][${i}][${k}]`, engine.extendedElegibilityTrace[j][i][k]);
+          const errorResponsibilityK = this.getVariable(`errorResponsibility`, k);
+          const extendedElegibilityTraceJIK = this.getVariable(`extendedElegibilityTrace`, j, i, k);
           statement(assignSum(Δw, mul(errorResponsibilityK, extendedElegibilityTraceJIK)));
         }
-        const learningRate = this.alloc('learningRate', engine.learningRate);
+        const learningRate = this.getVariable('learningRate');
         statement(assignMul(Δw, learningRate));
-        const weightJI = this.alloc(`weight[${j}][${i}]`, engine.weight[j][i]);
+        const weightJI = this.getVariable(`weight`, j, i);
         statement(assignSum(weightJI, Δw));
       } else if (hasProjectedError) {
         i = topology.inputSet[j][h];
-        const weightJI = this.alloc(`weight[${j}][${i}]`, engine.weight[j][i]);
-        const projectedErrorResponsibilityJ = this.alloc(`projectedErrorResponsibility[${j}]`, engine.projectedErrorResponsibility[j]);
-        const elegibilityTraceJI = this.alloc(`elegibilityTrace[${j}][${i}]`, engine.elegibilityTrace[j][i]);
-        const learningRate = this.alloc('learningRate', engine.learningRate);
+        const weightJI = this.getVariable(`weight`, j, i);
+        const projectedErrorResponsibilityJ = this.getVariable(`projectedErrorResponsibility`, j);
+        const elegibilityTraceJI = this.getVariable(`elegibilityTrace`, j, i);
+        const learningRate = this.getVariable('learningRate');
         statement(assignSum(weightJI, mul(mul(projectedErrorResponsibilityJ, elegibilityTraceJI), learningRate)));
       } else if (hasGatedError) {
         i = topology.inputSet[j][h];
@@ -673,13 +690,13 @@ export default class AST {
         statement(assign(Δw, number(0)));
         for (g = 0; g < topology.gateSet[j].length; g++) {
           k = topology.gateSet[j][g];
-          const errorResponsibilityK = this.alloc(`errorResponsibility[${k}]`, engine.errorResponsibility[k]);
-          const extendedElegibilityTraceJIK = this.alloc(`extendedElegibilityTrace[${j}][${i}][${k}]`, engine.extendedElegibilityTrace[j][i][k]);
+          const errorResponsibilityK = this.getVariable(`errorResponsibility`, k);
+          const extendedElegibilityTraceJIK = this.getVariable(`extendedElegibilityTrace`, j, i, k);
           statement(assignSum(Δw, mul(errorResponsibilityK, extendedElegibilityTraceJIK)));
         }
-        const learningRate = this.alloc('learningRate', engine.learningRate);
+        const learningRate = this.getVariable('learningRate');
         statement(assignMul(Δw, learningRate));
-        const weightJI = this.alloc(`weight[${j}][${i}]`, engine.weight[j][i]);
+        const weightJI = this.getVariable(`weight`, j, i);
         statement(assignSum(weightJI, Δw));
       }
     }
@@ -693,3 +710,5 @@ export default class AST {
     return Object.keys(this.variables).map(key => this.variables[key]);
   }
 }
+
+export default AST;

@@ -1,7 +1,7 @@
 {
   "name": "lysergic",
   "version": "0.1.5",
-  "description": "Synaptic's engine",
+  "description": "Synaptic's neural network compiler",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
   "files": [
@@ -27,13 +27,22 @@
     "postversion": "git push && git push --tags && npm publish"
   },
   "author": "Juan Cazala <cazala@mail.sfsu.edu> (http://caza.la/)",
+  "maintainers": [
+    {
+      "email": "cazala@mail.sfsu.edu",
+      "name": "Juan Cazala",
+      "url": "http://caza.la/"
+    },
+    {
+      "email": "agustin.mz.92@gmail.com",
+      "name": "Agustin Mendez",
+      "url": "http://menduz.com"
+    }
+  ],
   "license": "MIT",
   "devDependencies": {
     "rimraf": "^2.6.1",
-    "tslint": "^3.15.1",
-    "typescript": "^2.3.4"
-  },
-  "dependencies": {
-    "typescript": "^2.3.4"
+    "tslint": "^5.4.3",
+    "typescript": "^2.4.0"
   }
 }

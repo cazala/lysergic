@@ -68,6 +68,34 @@ export class DocumentNode extends Node {
   }
 }
 
+
+export class ParameterNode extends ExpressionNode {
+  constructor(public name: string) {
+    super();
+  }
+
+  toString() {
+    return this.name;
+  }
+}
+
+export class ParametersNode extends Node {
+  children: ParameterNode[];
+
+  toString() {
+    return `(${this.children.join(', ')})`;
+  }
+}
+
+
+export class BlockNode extends Node {
+  name: string;
+  children: ExpressionNode[];
+  toString() {
+    return `{\n` + indent(this.children.map(x => x + ';').join('\n')) + `\n};`;
+  }
+}
+
 export class FunctionNode extends ExpressionNode {
   name: string;
 
@@ -85,32 +113,7 @@ export class FunctionNode extends ExpressionNode {
   }
 }
 
-export class BlockNode extends Node {
-  name: string;
-  children: ExpressionNode[];
-  toString() {
-    return `{\n` + indent(this.children.map(x => x + ';').join('\n')) + `\n};`;
-  }
-}
 
-export class ParametersNode extends Node {
-  children: ParameterNode[];
-
-  toString() {
-    return `(${this.children.join(', ')})`;
-  }
-}
-
-
-export class ParameterNode extends ExpressionNode {
-  constructor(public name: string) {
-    super();
-  }
-
-  toString() {
-    return this.name;
-  }
-}
 
 export class HeapReferenceNode extends ExpressionNode {
   constructor(public position: number) {
@@ -178,5 +181,16 @@ export class FloatNumberNode extends ExpressionNode {
 
   toString() {
     return this.numericValue.toFixed(1);
+  }
+}
+
+export class Variable extends HeapReferenceNode {
+  constructor(
+    public id: number,
+    public key: string,
+    public initialValue: number,
+    public tag: string
+  ) {
+    super(id);
   }
 }
