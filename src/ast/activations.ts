@@ -28,6 +28,9 @@ export enum ActivationTypes {
   ELU = 15,
   PELU = 16,
 
+  POW = 17,
+  POW_MINUS1 = 18,
+
 
 
   AVG_POOLING = WHOLE_LAYER_ACTIVATION_KIND | 1,
@@ -68,6 +71,12 @@ export function buildActivationFunction(state: Variable, type: ActivationTypes):
 
     case ActivationTypes.EXP:
       return exp(state);
+
+    case ActivationTypes.POW:
+      return mul(state, state);
+
+    case ActivationTypes.POW_MINUS1:
+      return div(number(1), state);
 
     case ActivationTypes.GAUSSIAN:
       return exp(neg(mul(state, state)));
@@ -120,6 +129,12 @@ export function buildDerivativeFunction(state: Variable, activation: Variable, t
 
     case ActivationTypes.EXP:
       return activation;
+
+    case ActivationTypes.POW:
+      return mul(number(2), state);
+
+    case ActivationTypes.POW_MINUS1:
+      return div(number(1), mul(state, state));
 
     case ActivationTypes.GAUSSIAN:
       return mul(mul(number(-2), state), activation);

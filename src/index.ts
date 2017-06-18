@@ -168,6 +168,7 @@ export default class Lysergic {
       inputSet: this.topology.inputSet,
       connections: this.topology.connections,
       gates: this.topology.gates,
+      units: this.topology.units,
       layers: this.topology.layers,
       activationFunction: this.topology.activationFunction
     });
@@ -197,6 +198,7 @@ export default class Lysergic {
     compiler.topology.connections = data.connections;
     compiler.topology.gates = data.gates;
     compiler.topology.layers = data.layers;
+    compiler.topology.units = data.units;
     compiler.topology.activationFunction = data.activationFunction;
     return compiler;
   }
