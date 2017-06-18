@@ -279,11 +279,12 @@ export class AST {
         const isSelfConnectedK = topology.connections.some(connection => connection.to === k && connection.from === k);
         const isSelfConnectionGatedK = topology.gates.some(gate => gate.to === k && gate.from === k);
 
-        const bigParenthesisTermResult = this.alloc('bigParenthesisTermResult', null);
+        const bigParenthesisTermResult = this.alloc('bigParenthesisTermResult', 0);
 
         let keepBigParenthesisTerm = false;
         let initializeBigParenthesisTerm = false;
-        if (isSelfConnectedK && this.hasVariable('derivativeTerm', k, j)) {
+
+        if (isSelfConnectedK && this.hasVariable('derivativeTerm', k, j) && this.getVariable('derivativeTerm', k, j).initialValue) {
           const stateK = this.getVariable(`state`, k);
           statement(assign(bigParenthesisTermResult, stateK));
           keepBigParenthesisTerm = true;

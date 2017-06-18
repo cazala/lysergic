@@ -23,12 +23,19 @@ export class Heap {
   async build({ minHeapSize = 0x10000, buffer }: IBuildHeapOptions = {}) {
     this.AST.topology.normalize();
 
+    const variables = this.AST.getVariables();
+
+    variables.forEach($ => {
+      if (($.position + 1) > this.AST.allocationCount)
+        this.AST.allocationCount = $.position + 1;
+    });
+
     // build heap and memory
-    this.buffer = buffer || new ArrayBuffer(Math.min(this.AST.allocationCount * 8, minHeapSize));
+    this.buffer = buffer || new ArrayBuffer(Math.max(this.AST.allocationCount * 8, minHeapSize));
     this.memory = new Float64Array(this.buffer);
 
     // fill buffer with initial values
-    this.AST.getVariables()
+    variables
       .forEach(variable => {
         if (typeof variable.initialValue === 'number') {
           this.memory[variable.id] = variable.initialValue;

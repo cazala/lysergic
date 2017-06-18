@@ -34,7 +34,7 @@ export enum StatusTypes {
 }
 
 export default class Lysergic {
-  static RandomGenerator = () => Math.random() * 2 - 1;
+  static RandomGenerator = Math.random.bind(Math);
 
   learningRate = 0.1;
 
@@ -47,28 +47,37 @@ export default class Lysergic {
 
   random: () => number = Lysergic.RandomGenerator;
 
-  constructor(options: ILysergicOptions = {}) {
+  constructor(public options: ILysergicOptions = {}) {
     this.topology = new Topology.Topology({ engine: this, bias: options.bias });
     this.ast = new AST.AST({ topology: this.topology });
     this.heap = new Heap.Heap({ ast: this.ast });
-    this.status = LysergicStatus.UNLOCKED;
+
+    if (options.generator) {
+      this.random = options.generator;
+    }
 
     // if using bias, create a bias unit, with a fixed activation of 1
     if (options.bias) {
-      this.topology.biasUnit = this.topology.addUnit();
+      this.topology.biasUnit = this.addUnit({ bias: false });
       this.ast.setVariable('activation', this.topology.biasUnit, 1);
     }
   }
 
   addUnit(options: Topology.ITopoloyUnitOptions) {
+    if (this.status === LysergicStatus.LOCKED)
+      throw new Error('The network is locked');
     return this.topology.addUnit(options);
   }
 
   addConnection(from, to, weight) {
+    if (this.status === LysergicStatus.LOCKED)
+      throw new Error('The network is locked');
     this.topology.addConnection(from, to, weight);
   }
 
   addGate(from, to, gater) {
+    if (this.status === LysergicStatus.LOCKED)
+      throw new Error('The network is locked');
     this.topology.addGate(from, to, gater);
   }
 
@@ -131,7 +140,19 @@ export default class Lysergic {
   toJSON(asString: boolean = false): object | string {
     let variables = {};
 
-    Object.keys(this.ast.variables).map($ => variables[$] = this.ast.variables[$].initialValue);
+    let keys = Object.keys(this.ast.variables).map($ => ({
+      original: $,
+      standard: $.replace(/\[(\d+)\]/g, function (a, $) {
+        return '[' + ('00000000' + $).substr(-9) + ']';
+      })
+    }));
+
+    keys.sort((a, b) => {
+      if (a.standard > b.standard) return 1;
+      return -1;
+    });
+
+    keys.map($ => variables[$.original] = this.ast.variables[$.original].initialValue);
 
     const stringified = JSON.stringify({
       learningRate: this.learningRate,
