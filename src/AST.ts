@@ -5,9 +5,6 @@ import { Topology } from "./Topology";
 
 export { nodes };
 
-declare var console;
-
-
 export interface IASTOptions {
   topology: Topology;
 }
@@ -49,8 +46,6 @@ export class AST {
     this.document.addNode(activationFunction);
     const propagationFunction: nodes.FunctionNode = func('propagate');
     this.document.addNode(propagationFunction);
-
-    console.log(this.topology.heap.getVariables().map($ => $.key));
 
     for (let layer = 0; layer < layers.length; layer++) {
       if (layer != 0) {

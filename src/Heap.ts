@@ -89,7 +89,6 @@ export class Heap {
 
     // insert reordered
     sortedVariables.forEach($ => {
-      console.log($.key, $);
       variables[$.key] = $;
     });
   }
