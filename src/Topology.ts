@@ -1,5 +1,5 @@
 import { ActivationTypes } from "./ast/activations";
-import { Lysergic, StatusTypes } from "./index";
+import { Heap } from "./Heap";
 
 export interface Connection {
   to: number;
@@ -13,7 +13,7 @@ export interface Gate {
 }
 
 export interface ITopologyOptions {
-  engine: Lysergic;
+  heap: Heap;
   bias?: boolean;
 }
 
@@ -24,7 +24,7 @@ export interface ITopoloyUnitOptions {
 
 export class Topology {
 
-  engine: Lysergic = null;
+  heap: Heap = null;
   biasUnit: number = null;
   inputsOf: number[][] = [];
   projectedBy: number[][] = [];
@@ -42,9 +42,8 @@ export class Topology {
   units = 0;
 
   constructor(options: ITopologyOptions) {
-    const { engine } = options;
-    this.engine = engine;
-
+    const { heap } = options;
+    this.heap = heap;
   }
 
   private normalize2D(key: keyof Topology) {
@@ -109,25 +108,25 @@ export class Topology {
     this.gateSet[unit] = [];
     this.activationFunction[unit] = activationFunction;
 
-    this.engine.ast.setVariable('state', unit, 0);
+    this.heap.setVariable('state', unit, 0);
     // since it's not self-connected the weight of the self-connection is 0 (this is explained in the text between eq. 14 and eq. 15)
-    this.engine.ast.setVariable('activation', unit, 0);
-    this.engine.ast.setVariable('derivative', unit, 0);
-    this.engine.ast.setVariable('gain', unit, unit, 1); // ungated connections have a gain of 1 (eq. 14)
-    this.engine.ast.setVariable('elegibilityTrace', unit, unit, 0);
-    this.engine.ast.setVariable('errorResponsibility', unit, 0);
-    this.engine.ast.setVariable('projectedErrorResponsibility', unit, 0);
-    this.engine.ast.setVariable('gatedErrorResponsibility', unit, 0);
+    this.heap.setVariable('activation', unit, 0);
+    this.heap.setVariable('derivative', unit, 0);
+    this.heap.setVariable('gain', unit, unit, 1); // ungated connections have a gain of 1 (eq. 14)
+    this.heap.setVariable('elegibilityTrace', unit, unit, 0);
+    this.heap.setVariable('errorResponsibility', unit, 0);
+    this.heap.setVariable('projectedErrorResponsibility', unit, 0);
+    this.heap.setVariable('gatedErrorResponsibility', unit, 0);
 
     // if using bias, connect bias unit to newly created unit
     if (bias && this.biasUnit != null) {
-      this.addConnection(this.biasUnit, unit);
+      this.addConnection(this.biasUnit, unit, 1);
     }
 
     return unit;
   }
 
-  addConnection(from: number, to: number, weight: number = null) {
+  addConnection(from: number, to: number, weight: number) {
     // if the connection already exists then return
     if (this.connections.some(connection => connection.from === from && connection.to === to)) {
       return;
@@ -138,9 +137,9 @@ export class Topology {
     // setup connection
 
     const isSelfConnection = (from === to);
-    this.engine.ast.setVariable('gain', to, from, 1); // ungated connections have a gain of 1 (eq. 14)
-    this.engine.ast.setVariable('weight', to, from, isSelfConnection ? 1 : weight == null ? this.engine.random() * .3 + .1 : weight); // self-connections have a fixed weight of 1 (this is explained in the text between eq. 14 and eq. 15)
-    this.engine.ast.setVariable('elegibilityTrace', to, from, 0);
+    this.heap.setVariable('gain', to, from, 1); // ungated connections have a gain of 1 (eq. 14)
+    this.heap.setVariable('weight', to, from, isSelfConnection ? 1 : weight); // self-connections have a fixed weight of 1 (this is explained in the text between eq. 14 and eq. 15)
+    this.heap.setVariable('elegibilityTrace', to, from, 0);
 
     // track units
     this.track(to);
@@ -164,9 +163,6 @@ export class Topology {
   }
 
   addLayer(size = 0, options: ITopoloyUnitOptions) {
-    if (this.engine.engineStatus === StatusTypes.REVERSE_INIT) {
-      throw new Error('You can\'t add layers during REVERSE_INIT phase!');
-    }
     const layer: number[] = [];
     for (let i = 0; i < size; i++) {
       const unit = this.addUnit(options);
@@ -208,19 +204,19 @@ export class Topology {
     // track extended elegibility traces for j
     this.inputsOf[unit].forEach(i => {
       this.gatedBy[unit].forEach(k => {
-        this.engine.ast.setVariable('extendedElegibilityTrace', unit, i, k, 0);
+        this.heap.setVariable('extendedElegibilityTrace', unit, i, k, 0);
       });
     });
     // track extended elegibility traces for i
     this.projectedBy[unit].forEach(j => {
       this.gatedBy[j].forEach(k => {
-        this.engine.ast.setVariable('extendedElegibilityTrace', j, unit, k, 0);
+        this.heap.setVariable('extendedElegibilityTrace', j, unit, k, 0);
       });
     });
     // track extended elegibility traces for k
     this.gatersOf[unit].forEach(j => {
       this.inputsOf[j].forEach(i => {
-        this.engine.ast.setVariable('extendedElegibilityTrace', j, i, unit, 0);
+        this.heap.setVariable('extendedElegibilityTrace', j, i, unit, 0);
       });
     });
 
@@ -263,13 +259,13 @@ export class Topology {
     // compute derivative term for k gated by unit
     this.gatedBy[unit].forEach(k => {
       if (this.gates.some(gate => gate.to === k && gate.from === k && gate.gater === unit)) {
-        this.engine.ast.setVariable('derivativeTerm', k, unit, 1);
+        this.heap.setVariable('derivativeTerm', k, unit, 1);
       }
     });
     // compute derivative term for unit gated by j
     this.gatersOf[unit].forEach(j => {
       if (this.gates.some(gate => gate.to === unit && gate.from === unit && gate.gater === j)) {
-        this.engine.ast.setVariable('derivativeTerm', unit, j, 1);
+        this.heap.setVariable('derivativeTerm', unit, j, 1);
       }
     });
 

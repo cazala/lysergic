@@ -1,15 +1,11 @@
-declare var console;
-
 import nodes = require("./ast/nodes");
 import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max, assignSub } from "./ast/operations";
 import { buildActivationFunction, buildDerivativeFunction, ActivationTypes } from "./ast/activations";
 import { Topology } from "./Topology";
 
-export interface Dictionary<T> {
-  [key: string]: T;
-}
-
 export { nodes };
+
+declare var console;
 
 
 export interface IASTOptions {
@@ -21,8 +17,7 @@ export class AST {
   static nodes = nodes;
 
   topology: Topology;
-  allocationCount: number = 0;
-  variables: Dictionary<nodes.Variable> = {};
+
   inputs: nodes.Variable[] = [];
   outputs: nodes.Variable[] = [];
   targets: nodes.Variable[] = [];
@@ -31,47 +26,6 @@ export class AST {
   constructor(options: IASTOptions) {
     const { topology } = options;
     this.topology = topology;
-  }
-
-  private alloc(key: string, value: number, tag: string = null): nodes.Variable {
-    if (!(key in this.variables)) {
-      this.variables[key] = new nodes.Variable(this.allocationCount++, key, value, tag);
-    }
-    this.variables[key].initialValue = value || 0;
-    return this.variables[key];
-  }
-
-  setVariable(key: string, value: number): nodes.Variable;
-  setVariable(key: string, i: number, value: number): nodes.Variable;
-  setVariable(key: string, i: number, j: number, value: number): nodes.Variable;
-  setVariable(key: string, i: number, j: number, k: number, value: number): nodes.Variable;
-  setVariable(key: string, ...indexes: number[]) {
-    let value = indexes.pop();
-    const variableKey = key + indexes.map($ => `[${$}]`).join('');
-    return this.alloc(variableKey, value);
-  }
-
-  getVariable(key: string): nodes.Variable;
-  getVariable(key: string, i: number): nodes.Variable;
-  getVariable(key: string, i: number, j: number): nodes.Variable;
-  getVariable(key: string, i: number, j: number, k: number): nodes.Variable;
-  getVariable(key: string, ...indexes: number[]) {
-    const variableKey = key + indexes.map($ => `[${$}]`).join('');
-    let variable = this.variables[variableKey];
-    if (!variable) {
-      console.log(Object.keys(this.variables));
-      throw new Error(variableKey + ' is not declared');
-    }
-    return variable;
-  }
-
-
-  hasVariable(key: string): boolean;
-  hasVariable(key: string, i: number): boolean;
-  hasVariable(key: string, i: number, j: number): boolean;
-  hasVariable(key: string, i: number, j: number, k: number): boolean;
-  hasVariable(key: string, ...indexes: number[]) {
-    return !!this.variables[key + indexes.map($ => `[${$}]`).join('')];
   }
 
   reset(): void {
@@ -87,17 +41,16 @@ export class AST {
 
     // shorthands
     const layers = this.topology.layers;
-    const engine = this.topology.engine;
 
     let outputLayer = layers.length - 1;
 
     // build AST
-    this.alloc(`learningRate`, this.topology.engine.learningRate);
-    this.alloc(`seed`, this.topology.engine.random());
     const activationFunction: nodes.FunctionNode = func('activate');
     this.document.addNode(activationFunction);
     const propagationFunction: nodes.FunctionNode = func('propagate');
     this.document.addNode(propagationFunction);
+
+    console.log(this.topology.heap.getVariables().map($ => $.key));
 
     for (let layer = 0; layer < layers.length; layer++) {
       if (layer != 0) {
@@ -110,7 +63,7 @@ export class AST {
         let activationJ: nodes.Variable;
         switch (layer) {
           case 0:
-            activationJ = this.getVariable('activation', layers[layer][unit]); // TODO: Tag, input
+            activationJ = this.topology.heap.getVariable('activation', layers[layer][unit]); // TODO: Tag, input
             this.inputs.push(activationJ);
             break;
           case outputLayer:
@@ -135,7 +88,7 @@ export class AST {
       let softmaxUnits = [];
 
       for (let unit = 0; unit < layers[layer].length; unit++) {
-        const type = engine.topology.activationFunction[layers[layer][unit]];
+        const type = this.topology.activationFunction[layers[layer][unit]];
 
         if (type == ActivationTypes.SOFTMAX) {
           softmaxUnits.push(layers[layer][unit]);
@@ -157,7 +110,7 @@ export class AST {
     }
 
     for (let unit = layers[outputLayer].length - 1; unit >= 0; unit--) {
-      let targetJ = this.alloc(`target[${unit}]`, null, 'target');
+      let targetJ = this.topology.heap.setVariable(`target`, unit, 0);
       this.targets.push(targetJ);
       this.buildPropagation(layers[outputLayer][unit], outputLayer, targetJ);
     }
@@ -181,9 +134,6 @@ export class AST {
   }
 
   private buildActivationDerivative(j: number, layerJ: number, targetFunction: string = 'activate'): nodes.Variable {
-
-    const engine = this.topology.engine;
-
     const layerNode = this.getFunctionBodyNode(targetFunction);
 
     const blockNode = new nodes.BlockNode();
@@ -203,11 +153,11 @@ export class AST {
     y'[j] = f'(j)
 
     ====================================================================================================================*/
-    const stateJ = this.getVariable(`state`, j);
-    const activationJ = this.getVariable(`activation`, j); // TODO: tag output
-    const derivativeJ = this.getVariable(`derivative`, j);
+    const stateJ = this.topology.heap.getVariable(`state`, j);
+    const activationJ = this.topology.heap.getVariable(`activation`, j); // TODO: tag output
+    const derivativeJ = this.topology.heap.getVariable(`derivative`, j);
 
-    const derivativeFunction = buildDerivativeFunction(stateJ, activationJ, engine.topology.activationFunction[j]);
+    const derivativeFunction = buildDerivativeFunction(stateJ, activationJ, this.topology.activationFunction[j]);
 
     if (derivativeFunction) {
       statement(assign(derivativeJ, derivativeFunction));
@@ -230,8 +180,8 @@ export class AST {
     // helper to add a statement to the unit node
     const statement = (node: nodes.ExpressionNode) => blockNode.addNode(node);
 
-    const activationJ = this.getVariable(`activation`, j); // TODO: tag output
-    const derivativeJ = this.getVariable(`derivative`, j);
+    const activationJ = this.topology.heap.getVariable(`activation`, j); // TODO: tag output
+    const derivativeJ = this.topology.heap.getVariable(`derivative`, j);
 
     const isSelfConnected = topology.connections.some(connection => connection.to === j && connection.from === j);
     const isSelfConnectionGated = topology.gates.some(gate => gate.to === j && gate.from === j);
@@ -246,16 +196,16 @@ export class AST {
     ====================================================================================================================*/
     for (h = 0; h < topology.inputSet[j].length; h++) {
       i = topology.inputSet[j][h];
-      const elegibilityTraceJI = this.getVariable(`elegibilityTrace`, j, i);
-      const activationI = this.getVariable(`activation`, i);
-      const gainJI = this.getVariable(`gain`, j, i);
+      const elegibilityTraceJI = this.topology.heap.getVariable(`elegibilityTrace`, j, i);
+      const activationI = this.topology.heap.getVariable(`activation`, i);
+      const gainJI = this.topology.heap.getVariable(`gain`, j, i);
 
       if (isSelfConnected && isSelfConnectionGated) {
-        const gainJJ = this.getVariable(`gain`, j, j);
-        const weightJJ = this.getVariable(`weight`, j, j);
+        const gainJJ = this.topology.heap.getVariable(`gain`, j, j);
+        const weightJJ = this.topology.heap.getVariable(`weight`, j, j);
         statement(assign(elegibilityTraceJI, sum(mul(mul(gainJJ, weightJJ), elegibilityTraceJI), mul(gainJI, activationI))));
       } else if (isSelfConnected) {
-        const weightJJ = this.getVariable(`weight`, j, j);
+        const weightJJ = this.topology.heap.getVariable(`weight`, j, j);
         statement(assign(elegibilityTraceJI, sum(mul(weightJJ, elegibilityTraceJI), mul(gainJI, activationI))));
       } else {
         statement(assign(elegibilityTraceJI, mul(gainJI, activationI)));
@@ -279,13 +229,13 @@ export class AST {
         const isSelfConnectedK = topology.connections.some(connection => connection.to === k && connection.from === k);
         const isSelfConnectionGatedK = topology.gates.some(gate => gate.to === k && gate.from === k);
 
-        const bigParenthesisTermResult = this.alloc('bigParenthesisTermResult', 0);
+        const bigParenthesisTermResult = this.topology.heap.setVariable('bigParenthesisTermResult', 0);
 
         let keepBigParenthesisTerm = false;
         let initializeBigParenthesisTerm = false;
 
-        if (isSelfConnectedK && this.hasVariable('derivativeTerm', k, j) && this.getVariable('derivativeTerm', k, j).initialValue) {
-          const stateK = this.getVariable(`state`, k);
+        if (isSelfConnectedK && this.topology.heap.hasVariable('derivativeTerm', k, j) && this.topology.heap.getVariable('derivativeTerm', k, j).initialValue) {
+          const stateK = this.topology.heap.getVariable(`state`, k);
           statement(assign(bigParenthesisTermResult, stateK));
           keepBigParenthesisTerm = true;
         } else {
@@ -300,25 +250,25 @@ export class AST {
               statement(assign(bigParenthesisTermResult, number(0)));
               initializeBigParenthesisTerm = false;
             }
-            const weightKA = this.getVariable(`weight`, k, a);
-            const activationA = this.getVariable(`activation`, a);
+            const weightKA = this.topology.heap.getVariable(`weight`, k, a);
+            const activationA = this.topology.heap.getVariable(`activation`, a);
             statement(assignSum(bigParenthesisTermResult, mul(weightKA, activationA)));
             keepBigParenthesisTerm = true;
           }
         }
 
-        const extendedElegibilityTraceJIK = this.getVariable(`extendedElegibilityTrace`, j, i, k);
+        const extendedElegibilityTraceJIK = this.topology.heap.getVariable(`extendedElegibilityTrace`, j, i, k);
 
         if (isSelfConnectedK && isSelfConnectionGatedK) {
-          const gainKK = this.getVariable(`gain`, k, k);
-          const weightKK = this.getVariable(`weight`, k, k);
+          const gainKK = this.topology.heap.getVariable(`gain`, k, k);
+          const weightKK = this.topology.heap.getVariable(`weight`, k, k);
           if (keepBigParenthesisTerm) {
             statement(assign(extendedElegibilityTraceJIK, sum(mul(mul(gainKK, weightKK), extendedElegibilityTraceJIK), mul(mul(derivativeJ, elegibilityTraceJI), bigParenthesisTermResult))));
           } else {
             statement(assign(extendedElegibilityTraceJIK, mul(mul(gainKK, weightKK), extendedElegibilityTraceJIK)));
           }
         } else if (isSelfConnectedK) {
-          const weightKK = this.getVariable(`weight`, k, k);
+          const weightKK = this.topology.heap.getVariable(`weight`, k, k);
           if (keepBigParenthesisTerm) {
             statement(assign(extendedElegibilityTraceJIK, sum(mul(weightKK, extendedElegibilityTraceJIK), mul(mul(derivativeJ, elegibilityTraceJI), bigParenthesisTermResult))));
           } else {
@@ -337,7 +287,7 @@ export class AST {
       to = topology.gatedBy[j][h];
       for (g = 0; g < topology.inputsOfGatedBy[to][j].length; g++) {
         from = topology.inputsOfGatedBy[to][j][g];
-        const gainToFrom = this.getVariable(`gain`, to, from);
+        const gainToFrom = this.topology.heap.getVariable(`gain`, to, from);
         statement(assign(gainToFrom, activationJ));
       }
     }
@@ -356,16 +306,16 @@ export class AST {
 
     // --------- VARS ---------
 
-    const activations: nodes.Variable[] = units.map($ => this.getVariable(`activation`, $));
-    const derivatives: nodes.Variable[] = units.map($ => this.getVariable(`derivative`, $));
-    const states: nodes.Variable[] = units.map($ => this.getVariable(`state`, $));
+    const activations: nodes.Variable[] = units.map($ => this.topology.heap.getVariable(`activation`, $));
+    const derivatives: nodes.Variable[] = units.map($ => this.topology.heap.getVariable(`derivative`, $));
+    const states: nodes.Variable[] = units.map($ => this.topology.heap.getVariable(`state`, $));
 
-    const maximum = this.alloc(`softmaxMaximum[${layerJ}]`, 0);
-    const denominator = this.alloc(`softmaxDenominator[${layerJ}]`, 0);
+    const maximum = this.topology.heap.setVariable(`softmaxMaximum`, layerJ, 0);
+    const denominator = this.topology.heap.setVariable(`softmaxDenominator`, layerJ, 0);
     const nominators: nodes.Variable[] = [];
 
     units.forEach((unit, i) => {
-      const nominator = this.alloc(`softmaxNominators[${layerJ}][${unit}]`, 0);
+      const nominator = this.topology.heap.setVariable(`softmaxNominators`, layerJ, unit, 0);
       nominators.push(nominator);
     });
 
@@ -446,17 +396,17 @@ export class AST {
     ====================================================================================================================*/
     let i, h;
 
-    const stateJ = this.getVariable(`state`, j);
+    const stateJ = this.topology.heap.getVariable(`state`, j);
 
     const isSelfConnected = topology.connections.some(connection => connection.to === j && connection.from === j);
     const isSelfConnectionGated = topology.gates.some(gate => gate.to === j && gate.from === j);
 
     if (isSelfConnected && isSelfConnectionGated) {
-      const gainJJ = this.getVariable(`gain`, j, j);
-      const weightJJ = this.getVariable(`weight`, j, j);
+      const gainJJ = this.topology.heap.getVariable(`gain`, j, j);
+      const weightJJ = this.topology.heap.getVariable(`weight`, j, j);
       statement(assignMul(stateJ, mul(gainJJ, weightJJ)));
     } else if (isSelfConnected) {
-      const weightJJ = this.getVariable(`weight`, j, j);
+      const weightJJ = this.topology.heap.getVariable(`weight`, j, j);
       statement(assignMul(stateJ, weightJJ));
     } else {
       statement(assign(stateJ, number(0)));
@@ -466,15 +416,15 @@ export class AST {
       i = topology.inputSet[j][h];
       const isGated = topology.gates.some(gate => gate.from === i && gate.to === j);
       if (isGated) {
-        const stateJ = this.getVariable(`state`, j);
-        const gainJI = this.getVariable(`gain`, j, i);
-        const weightJI = this.getVariable(`weight`, j, i);
-        const activationI = this.getVariable(`activation`, i);
+        const stateJ = this.topology.heap.getVariable(`state`, j);
+        const gainJI = this.topology.heap.getVariable(`gain`, j, i);
+        const weightJI = this.topology.heap.getVariable(`weight`, j, i);
+        const activationI = this.topology.heap.getVariable(`activation`, i);
         statement(assignSum(stateJ, mul(mul(gainJI, weightJI), activationI)));
       } else {
-        const stateJ = this.getVariable(`state`, j);
-        const weightJI = this.getVariable(`weight`, j, i);
-        const activationI = this.getVariable(`activation`, i);
+        const stateJ = this.topology.heap.getVariable(`state`, j);
+        const weightJI = this.topology.heap.getVariable(`weight`, j, i);
+        const activationI = this.topology.heap.getVariable(`activation`, i);
         statement(assignSum(stateJ, mul(weightJI, activationI)));
       }
     }
@@ -484,9 +434,6 @@ export class AST {
   }
 
   private buildActivation(j: number, layerJ: number, targetFunction: string = 'activate'): nodes.Variable {
-
-    const engine = this.topology.engine;
-
     const layerNode = this.getFunctionBodyNode(targetFunction);
 
     const blockNode = new nodes.BlockNode();
@@ -504,10 +451,10 @@ export class AST {
     y'[j] = f'(j)
 
     ====================================================================================================================*/
-    const stateJ = this.getVariable(`state`, j);
-    const activationJ = this.getVariable(`activation`, j); // TODO: tag output
+    const stateJ = this.topology.heap.getVariable(`state`, j);
+    const activationJ = this.topology.heap.getVariable(`activation`, j); // TODO: tag output
 
-    const activationFunction = buildActivationFunction(stateJ, engine.topology.activationFunction[j]);
+    const activationFunction = buildActivationFunction(stateJ, this.topology.activationFunction[j]);
 
     if (activationFunction) {
       statement(assign(activationJ, activationFunction));
@@ -545,9 +492,9 @@ export class AST {
     ====================================================================================================================*/
     if (typeof targetJ !== 'undefined') {
       hasProjectedError = true;
-      const errorResponsibilityJ = this.getVariable(`errorResponsibility`, j);
-      const projectedErrorResponsibilityJ = this.getVariable(`projectedErrorResponsibility`, j);
-      const activationJ = this.getVariable(`activation`, j);
+      const errorResponsibilityJ = this.topology.heap.getVariable(`errorResponsibility`, j);
+      const projectedErrorResponsibilityJ = this.topology.heap.getVariable(`projectedErrorResponsibility`, j);
+      const activationJ = this.topology.heap.getVariable(`activation`, j);
       statement(assign(errorResponsibilityJ, sub(targetJ, activationJ)));
       statement(assign(projectedErrorResponsibilityJ, errorResponsibilityJ));
     } else {
@@ -558,24 +505,24 @@ export class AST {
       δP[j] = df(j) * Σ(P[j], k => δ[k] * g[k][j] * w[k][j]);
 
       ====================================================================================================================*/
-      const projectedErrorResponsibilityJ = this.getVariable(`projectedErrorResponsibility`, j);
+      const projectedErrorResponsibilityJ = this.topology.heap.getVariable(`projectedErrorResponsibility`, j);
       if (hasProjectedError) {
         statement(assign(projectedErrorResponsibilityJ, number(0)));
       }
       for (h = 0; h < topology.projectionSet[j].length; h++) {
         k = topology.projectionSet[j][h];
-        const errorResponsibilityK = this.getVariable(`errorResponsibility`, k);
+        const errorResponsibilityK = this.topology.heap.getVariable(`errorResponsibility`, k);
         const isGated = topology.gates.some(gate => gate.to === k && gate.from === j);
         if (isGated) {
-          const weightKJ = this.getVariable(`weight`, k, j);
-          const gainKJ = this.getVariable(`gain`, k, j);
+          const weightKJ = this.topology.heap.getVariable(`weight`, k, j);
+          const gainKJ = this.topology.heap.getVariable(`gain`, k, j);
           statement(assignSum(projectedErrorResponsibilityJ, mul(mul(gainKJ, weightKJ), errorResponsibilityK)));
         } else {
-          const weightKJ = this.getVariable(`weight`, k, j);
+          const weightKJ = this.topology.heap.getVariable(`weight`, k, j);
           statement(assignSum(projectedErrorResponsibilityJ, mul(weightKJ, errorResponsibilityK)));
         }
       }
-      const derivativeJ = this.getVariable(`derivative`, j);
+      const derivativeJ = this.topology.heap.getVariable(`derivative`, j);
       if (hasProjectedError) {
         statement(assignMul(projectedErrorResponsibilityJ, derivativeJ));
       }
@@ -592,20 +539,20 @@ export class AST {
       bigParenthesisTerm: (k, j) => dt * w[k][k] * s[k] + Σ(units.filter(a => a !== k), a => w[k][a] * y[a])
 
       ====================================================================================================================*/
-      const gatedErrorResponsibilityJ = this.getVariable(`gatedErrorResponsibility`, j);
+      const gatedErrorResponsibilityJ = this.topology.heap.getVariable(`gatedErrorResponsibility`, j);
       if (hasGatedError) {
         statement(assignMul(gatedErrorResponsibilityJ, number(0)));
       }
       for (h = 0; h < topology.gateSet[j].length; h++) {
         k = topology.gateSet[j][h];
         const isSelfConnectedK = topology.connections.some(connection => connection.to === k && connection.from === k);
-        const bigParenthesisTermResult = this.alloc('bigParenthesisTermResult', null);
+        const bigParenthesisTermResult = this.topology.heap.setVariable('bigParenthesisTermResult', null);
 
         let keepBigParenthesisTerm = false;
         let initializeBigParenthesisTerm = false;
 
-        if (isSelfConnectedK && this.hasVariable('derivativeTerm', k, j)) {
-          const stateK = this.getVariable(`state`, k);
+        if (isSelfConnectedK && this.topology.heap.hasVariable('derivativeTerm', k, j)) {
+          const stateK = this.topology.heap.getVariable(`state`, k);
           statement(assign(bigParenthesisTermResult, stateK));
           keepBigParenthesisTerm = true;
         } else {
@@ -618,14 +565,14 @@ export class AST {
               statement(assign(bigParenthesisTermResult, number(0)));
               initializeBigParenthesisTerm = false;
             }
-            const weightKA = this.getVariable(`weight`, k, a);
-            const activationA = this.getVariable(`activation`, a);
+            const weightKA = this.topology.heap.getVariable(`weight`, k, a);
+            const activationA = this.topology.heap.getVariable(`activation`, a);
             statement(assignSum(bigParenthesisTermResult, mul(weightKA, activationA)));
             keepBigParenthesisTerm = true;
           }
         }
         if (keepBigParenthesisTerm) {
-          const errorResponsibilityK = this.getVariable(`errorResponsibility`, k);
+          const errorResponsibilityK = this.topology.heap.getVariable(`errorResponsibility`, k);
           statement(assignSum(gatedErrorResponsibilityJ, mul(errorResponsibilityK, bigParenthesisTermResult)));
         }
       }
@@ -640,7 +587,7 @@ export class AST {
       δ[j] = δP[j] + δG[j];
 
       ====================================================================================================================*/
-      const errorResponsibilityJ = this.getVariable(`errorResponsibility`, j);
+      const errorResponsibilityJ = this.topology.heap.getVariable(`errorResponsibility`, j);
       if (hasProjectedError && hasGatedError) {
         statement(assign(errorResponsibilityJ, sum(projectedErrorResponsibilityJ, gatedErrorResponsibilityJ)));
       } else if (hasProjectedError) {
@@ -664,40 +611,40 @@ export class AST {
     for (h = 0; h < topology.inputSet[j].length; h++) {
       if (hasProjectedError && hasGatedError) {
         i = topology.inputSet[j][h];
-        const Δw = this.alloc(`Δw`, null);
-        const projectedErrorResponsibilityJ = this.getVariable(`projectedErrorResponsibility`, j);
-        const elegibilityTraceJI = this.getVariable(`elegibilityTrace`, j, i);
+        const Δw = this.topology.heap.setVariable(`Δw`, null);
+        const projectedErrorResponsibilityJ = this.topology.heap.getVariable(`projectedErrorResponsibility`, j);
+        const elegibilityTraceJI = this.topology.heap.getVariable(`elegibilityTrace`, j, i);
         statement(assign(Δw, mul(projectedErrorResponsibilityJ, elegibilityTraceJI)));
         for (g = 0; g < topology.gateSet[j].length; g++) {
           k = topology.gateSet[j][g];
-          const errorResponsibilityK = this.getVariable(`errorResponsibility`, k);
-          const extendedElegibilityTraceJIK = this.getVariable(`extendedElegibilityTrace`, j, i, k);
+          const errorResponsibilityK = this.topology.heap.getVariable(`errorResponsibility`, k);
+          const extendedElegibilityTraceJIK = this.topology.heap.getVariable(`extendedElegibilityTrace`, j, i, k);
           statement(assignSum(Δw, mul(errorResponsibilityK, extendedElegibilityTraceJIK)));
         }
-        const learningRate = this.getVariable('learningRate');
+        const learningRate = this.topology.heap.getVariable('learningRate');
         statement(assignMul(Δw, learningRate));
-        const weightJI = this.getVariable(`weight`, j, i);
+        const weightJI = this.topology.heap.getVariable(`weight`, j, i);
         statement(assignSum(weightJI, Δw));
       } else if (hasProjectedError) {
         i = topology.inputSet[j][h];
-        const weightJI = this.getVariable(`weight`, j, i);
-        const projectedErrorResponsibilityJ = this.getVariable(`projectedErrorResponsibility`, j);
-        const elegibilityTraceJI = this.getVariable(`elegibilityTrace`, j, i);
-        const learningRate = this.getVariable('learningRate');
+        const weightJI = this.topology.heap.getVariable(`weight`, j, i);
+        const projectedErrorResponsibilityJ = this.topology.heap.getVariable(`projectedErrorResponsibility`, j);
+        const elegibilityTraceJI = this.topology.heap.getVariable(`elegibilityTrace`, j, i);
+        const learningRate = this.topology.heap.getVariable('learningRate');
         statement(assignSum(weightJI, mul(mul(projectedErrorResponsibilityJ, elegibilityTraceJI), learningRate)));
       } else if (hasGatedError) {
         i = topology.inputSet[j][h];
-        const Δw = this.alloc(`Δw`, null);
+        const Δw = this.topology.heap.setVariable(`Δw`, null);
         statement(assign(Δw, number(0)));
         for (g = 0; g < topology.gateSet[j].length; g++) {
           k = topology.gateSet[j][g];
-          const errorResponsibilityK = this.getVariable(`errorResponsibility`, k);
-          const extendedElegibilityTraceJIK = this.getVariable(`extendedElegibilityTrace`, j, i, k);
+          const errorResponsibilityK = this.topology.heap.getVariable(`errorResponsibility`, k);
+          const extendedElegibilityTraceJIK = this.topology.heap.getVariable(`extendedElegibilityTrace`, j, i, k);
           statement(assignSum(Δw, mul(errorResponsibilityK, extendedElegibilityTraceJIK)));
         }
-        const learningRate = this.getVariable('learningRate');
+        const learningRate = this.topology.heap.getVariable('learningRate');
         statement(assignMul(Δw, learningRate));
-        const weightJI = this.getVariable(`weight`, j, i);
+        const weightJI = this.topology.heap.getVariable(`weight`, j, i);
         statement(assignSum(weightJI, Δw));
       }
     }
@@ -705,10 +652,6 @@ export class AST {
 
   getDocument() {
     return this.document;
-  }
-
-  getVariables() {
-    return Object.keys(this.variables).map(key => this.variables[key]);
   }
 }
 

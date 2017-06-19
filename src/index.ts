@@ -21,6 +21,7 @@ export enum LysergicStatus {
 export interface ILysergicOptions {
   generator?: () => number;
   bias?: boolean;
+  learningRate?: number;
 }
 
 export enum StatusTypes {
@@ -36,7 +37,17 @@ export enum StatusTypes {
 export default class Lysergic {
   static RandomGenerator = Math.random.bind(Math);
 
-  learningRate = 0.1;
+  get learningRate(): number {
+    return this.heap.getVariable(`learningRate`).initialValue;
+  }
+
+  set learningRate(val: number) {
+    let lr = +val;
+    if (isNaN(lr) || lr <= 0) {
+      throw new Error('learningRate must be a positive number');
+    }
+    this.heap.setVariable(`learningRate`, lr);
+  }
 
   engineStatus: StatusTypes = StatusTypes.IDLE;
 
@@ -48,9 +59,13 @@ export default class Lysergic {
   random: () => number = Lysergic.RandomGenerator;
 
   constructor(public options: ILysergicOptions = {}) {
-    this.topology = new Topology.Topology({ engine: this, bias: options.bias });
+    this.heap = new Heap.Heap({});
+
+    this.learningRate = options.learningRate || 0.1;
+
+    this.topology = new Topology.Topology({ heap: this.heap, bias: options.bias });
     this.ast = new AST.AST({ topology: this.topology });
-    this.heap = new Heap.Heap({ ast: this.ast });
+
 
     if (options.generator) {
       this.random = options.generator;
@@ -59,7 +74,8 @@ export default class Lysergic {
     // if using bias, create a bias unit, with a fixed activation of 1
     if (options.bias) {
       this.topology.biasUnit = this.addUnit({ bias: false });
-      this.ast.setVariable('activation', this.topology.biasUnit, 1);
+      this.heap.setVariable('state', this.topology.biasUnit, 1);
+      this.heap.setVariable('activation', this.topology.biasUnit, 1);
     }
   }
 
@@ -97,10 +113,6 @@ export default class Lysergic {
     return this.ast.getDocument();
   }
 
-  getVariables(): AST.nodes.Variable[] {
-    return this.ast.getVariables();
-  }
-
   async getBuffer(): Promise<ArrayBuffer> {
     if (this.status === LysergicStatus.UNLOCKED) {
       throw new Error('You need to build the network first');
@@ -120,39 +132,47 @@ export default class Lysergic {
     if (this.status === LysergicStatus.UNLOCKED) {
       throw new Error('You need to build the network first');
     }
-    await this.heap.setInputs(inputs);
+
+    const memory = await this.getMemory();
+
+    for (let i = 0; i < inputs.length; i++) {
+      memory[this.ast.inputs[i].id] = inputs[i];
+    }
   }
 
   async getOutputs(): Promise<ArrayLike<number>> {
     if (this.status === LysergicStatus.UNLOCKED) {
       throw new Error('You need to build the network first');
     }
-    return await this.heap.getOutputs();
+
+    const memory = await this.getMemory();
+
+    const outputs = new Array(this.ast.outputs.length);
+    for (let i = 0; i < this.ast.outputs.length; i++) {
+      outputs[i] = memory[this.ast.outputs[i].id];
+    }
+
+    return outputs;
   }
 
   async setTargets(targets: number[]) {
     if (this.status === LysergicStatus.UNLOCKED) {
       throw new Error('You need to build the network first');
     }
-    await this.heap.setTargets(targets);
+
+    const memory = await this.getMemory();
+
+    for (let i = 0; i < this.ast.targets.length; i++) {
+      memory[this.ast.targets[i].id] = targets[i];
+    }
   }
 
   toJSON(asString: boolean = false): object | string {
     let variables = {};
 
-    let keys = Object.keys(this.ast.variables).map($ => ({
-      original: $,
-      standard: $.replace(/\[(\d+)\]/g, function (a, $) {
-        return '[' + ('00000000' + $).substr(-9) + ']';
-      })
-    }));
-
-    keys.sort((a, b) => {
-      if (a.standard > b.standard) return 1;
-      return -1;
+    this.heap.getVariables().forEach($ => {
+      variables[$.key] = $.initialValue;
     });
-
-    keys.map($ => variables[$.original] = this.ast.variables[$.original].initialValue);
 
     const stringified = JSON.stringify({
       learningRate: this.learningRate,
@@ -183,7 +203,7 @@ export default class Lysergic {
     const variables = data.variables;
 
     Object.keys(variables).map($ => {
-      compiler.ast.setVariable($, variables[$]);
+      compiler.heap.setVariable($, variables[$]);
     });
 
     compiler.topology.biasUnit = data.biasUnit;
