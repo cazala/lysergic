@@ -1,6 +1,6 @@
 {
   "name": "lysergic",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Synaptic's neural network compiler",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
