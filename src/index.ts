@@ -19,7 +19,6 @@ export enum LysergicStatus {
 }
 
 export interface ILysergicOptions {
-  generator?: () => number;
   bias?: boolean;
   learningRate?: number;
 }
@@ -34,9 +33,9 @@ export enum StatusTypes {
   BUILDING
 }
 
-export default class Lysergic {
-  static RandomGenerator = Math.random.bind(Math);
 
+
+export default class Lysergic {
   get learningRate(): number {
     return this.heap.getVariable(`learningRate`).initialValue;
   }
@@ -56,8 +55,6 @@ export default class Lysergic {
   heap: Heap.Heap = null;
   status: LysergicStatus = LysergicStatus.UNLOCKED;
 
-  random: () => number = Lysergic.RandomGenerator;
-
   constructor(public options: ILysergicOptions = {}) {
     this.heap = new Heap.Heap({});
 
@@ -65,29 +62,30 @@ export default class Lysergic {
 
     this.topology = new Topology.Topology({ heap: this.heap, bias: options.bias });
     this.ast = new AST.AST({ topology: this.topology });
-
-
-    if (options.generator) {
-      this.random = options.generator;
-    }
-
-    // if using bias, create a bias unit, with a fixed activation of 1
-    if (options.bias) {
-      this.topology.biasUnit = this.addUnit({ bias: false });
-      this.heap.setVariable('state', this.topology.biasUnit, 1);
-      this.heap.setVariable('activation', this.topology.biasUnit, 1);
-    }
   }
 
-  addUnit(options: Topology.ITopoloyUnitOptions) {
+  addUnit(options: Topology.ITopologyUnitOptions) {
     if (this.status === LysergicStatus.LOCKED)
       throw new Error('The network is locked');
+
+    options = { bias: this.options.bias, ...options };
+
     return this.topology.addUnit(options);
   }
 
-  addConnection(from, to, weight) {
+  addLayer(size: number, options: Topology.ITopologyUnitOptions) {
     if (this.status === LysergicStatus.LOCKED)
       throw new Error('The network is locked');
+
+    options = { bias: this.options.bias, ...options };
+
+    return this.topology.addLayer(size, options);
+  }
+
+  addConnection(from: number, to: number, weight: number) {
+    if (this.status === LysergicStatus.LOCKED)
+      throw new Error('The network is locked');
+
     this.topology.addConnection(from, to, weight);
   }
 
@@ -169,6 +167,8 @@ export default class Lysergic {
 
   toJSON(asString: boolean = false): object | string {
     let variables = {};
+
+    this.heap.sortVariables();
 
     this.heap.getVariables().forEach($ => {
       variables[$.key] = $.initialValue;

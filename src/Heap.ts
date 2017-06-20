@@ -63,11 +63,12 @@ export class Heap {
   }
 
 
-  private sortVariables() {
+  sortVariables() {
     const variables = this.variables;
 
+
     let keys = Object.keys(variables).map($ => ({
-      original: $,
+      original: variables[$],
       standard: $.replace(/\[(\d+)\]/g, function (a, $) {
         return '[' + ('00000000' + $).substr(-9) + ']';
       })
@@ -78,25 +79,18 @@ export class Heap {
       return -1;
     });
 
-    let sortedVariables: Variable[] = [];
-
     // wipe variables
-    keys.forEach($ => {
-      variables[$.original].key = $.original;
-      sortedVariables.push(variables[$.original]);
-      delete variables[$.original];
-    });
-
-    // insert reordered
-    sortedVariables.forEach($ => {
-      variables[$.key] = $;
+    this.variables = {};
+    keys.forEach(($, $$) => {
+      this.variables[$.original.key] = $.original;
+      // variables[$.original].position = $$;
     });
   }
 
   async build({ minHeapSize = 0x10000, buffer }: IBuildHeapOptions = {}) {
-    const variables = this.getVariables();
-
     this.sortVariables();
+
+    const variables = this.getVariables();
 
     variables.forEach($ => {
       if (($.position + 1) > this.allocationCount)

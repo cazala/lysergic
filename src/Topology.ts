@@ -17,7 +17,7 @@ export interface ITopologyOptions {
   bias?: boolean;
 }
 
-export interface ITopoloyUnitOptions {
+export interface ITopologyUnitOptions {
   activationFunction?: ActivationTypes;
   bias?: boolean;
 }
@@ -44,6 +44,10 @@ export class Topology {
   constructor(options: ITopologyOptions) {
     const { heap } = options;
     this.heap = heap;
+
+    this.biasUnit = this.addUnit({ bias: false });
+    this.heap.setVariable('state', this.biasUnit, 1);
+    this.heap.setVariable('activation', this.biasUnit, 1);
   }
 
   private normalize2D(key: keyof Topology) {
@@ -91,7 +95,7 @@ export class Topology {
     this.normalize2D('layers');
   }
 
-  addUnit(options: ITopoloyUnitOptions = {}): number {
+  addUnit(options: ITopologyUnitOptions = {}): number {
     const {
       bias = true,
       activationFunction = ActivationTypes.LOGISTIC_SIGMOID
@@ -119,7 +123,7 @@ export class Topology {
     this.heap.setVariable('gatedErrorResponsibility', unit, 0);
 
     // if using bias, connect bias unit to newly created unit
-    if (bias && this.biasUnit != null) {
+    if (bias) {
       this.addConnection(this.biasUnit, unit, 1);
     }
 
@@ -162,7 +166,7 @@ export class Topology {
     this.track(gater);
   }
 
-  addLayer(size = 0, options: ITopoloyUnitOptions) {
+  addLayer(size = 0, options: ITopologyUnitOptions) {
     const layer: number[] = [];
     for (let i = 0; i < size; i++) {
       const unit = this.addUnit(options);
