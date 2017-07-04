@@ -1,7 +1,7 @@
 import { childrenRef, indent } from './helpers';
 
-export type BinaryOperator = '+' | '-' | '/' | '*' | '=' | '*=' | '/=' | '+=' | '-=' | '^' | '>' | '<' | '>=' | '<=' | '==' | 'max' | 'kronecker'
-export type UnaryOperator = '-' | 'exp' | 'rand' | 'abs' | 'sqrt' | 'ln'
+export type BinaryOperator = '+' | '-' | '/' | '*' | '=' | '*=' | '/=' | '+=' | '-=' | '^' | '>' | '<' | '>=' | '<=' | '==' | 'max' | 'kronecker';
+export type UnaryOperator = '-' | 'exp' | 'rand' | 'abs' | 'sqrt' | 'ln';
 
 export abstract class Node {
   children: Node[] = [];
@@ -24,8 +24,12 @@ export abstract class Node {
 
   parent: Node;
 
-  addNode(node: Node) {
+  addNode(node: Node | Node[]) {
     if (!node) return;
+    if (node instanceof Array) {
+      node.forEach($ => this.addNode($));
+      return;
+    }
     node.parent = this;
     this.children.push(node);
   }
@@ -114,6 +118,14 @@ export class FunctionNode extends ExpressionNode {
 }
 
 
+export class HeapPointer extends ExpressionNode {
+  @childrenRef(0)
+  position: ExpressionNode;
+
+  toString() {
+    return `H[${this.position}]`;
+  }
+}
 
 export class HeapReferenceNode extends ExpressionNode {
   constructor(public position: number) {
@@ -180,7 +192,18 @@ export class FloatNumberNode extends ExpressionNode {
   }
 
   toString() {
-    return this.numericValue.toFixed(1);
+    return this.numericValue.toFixed(10);
+  }
+}
+
+
+export class IntNumberNode extends ExpressionNode {
+  constructor(public numericValue: number) {
+    super();
+  }
+
+  toString() {
+    return this.numericValue.toFixed(0);
   }
 }
 
@@ -193,4 +216,30 @@ export class Variable extends HeapReferenceNode {
   ) {
     super(id);
   }
+}
+
+
+export class VariableDeclaration extends ExpressionNode {
+  constructor(
+    public name: string,
+    public type: 'int' | 'float',
+    public initialValue: number
+  ) {
+    super();
+  }
+}
+
+export class VariableReference extends ExpressionNode {
+  constructor(public variable: VariableDeclaration) {
+    super();
+  }
+}
+
+export class ForLoopNode extends ExpressionNode {
+  from: number;
+  to: number;
+  @childrenRef(0)
+  var: VariableReference;
+  @childrenRef(1)
+  expression: ExpressionNode;
 }

@@ -1,6 +1,8 @@
+declare var console;
+
 import nodes = require("./ast/nodes");
-import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max, assignSub } from "./ast/operations";
-import { buildActivationFunction, buildDerivativeFunction, ActivationTypes } from "./ast/activations";
+import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max, assignSub, forLoop, pointer, intNumber } from "./ast/operations";
+import { buildActivationFunction, buildDerivativeFunction, ActivationTypes, WHOLE_LAYER_ACTIVATION_KIND } from "./ast/activations";
 import { Topology } from "./Topology";
 
 export { nodes };
@@ -32,6 +34,40 @@ export class AST {
     this.document = document();
   }
 
+  isArrayOrdered(items: number[]): boolean {
+    let ordered = true;
+
+    let prev = null;
+
+    items.forEach(i => {
+      if (prev !== null) {
+        ordered = ordered && (prev == i - 1);
+      }
+      prev = i;
+    });
+
+    return ordered;
+  }
+
+
+  isOrdered(from: number, to: number, accessor: string[]): boolean {
+    let ordered = true;
+    let prev: nodes.Variable = null;
+    for (let i = from; i < to; i++) {
+      let args = [...accessor, i];
+      const actual = (this.topology.heap.getVariable as any)(...args);
+      if (prev) {
+        ordered = ordered && (prev.position == (actual.position - 1));
+      }
+      prev = actual;
+    }
+    return ordered;
+  }
+
+  isSameActivationTypeOrdered(from: number, to: number, accessor: string[]) {
+
+  }
+
   build(): void {
     // cleanup
     this.reset();
@@ -54,19 +90,73 @@ export class AST {
         }
       }
 
+      let sameActivationFunction = true;
+
+      let prevActivationFunction: ActivationTypes = null;
+
       for (let unit = 0; unit < layers[layer].length; unit++) {
-        let activationJ: nodes.Variable;
-        switch (layer) {
-          case 0:
-            activationJ = this.topology.heap.getVariable('activation', layers[layer][unit]); // TODO: Tag, input
-            this.inputs.push(activationJ);
-            break;
-          case outputLayer:
-            activationJ = this.buildActivation(layers[layer][unit], layer);
-            this.outputs.push(activationJ);
-            break;
-          default:
-            this.buildActivation(layers[layer][unit], layer);
+        const activationFunction = this.topology.activationFunction[layers[layer][unit]];
+
+        if (unit > 0) {
+          sameActivationFunction = sameActivationFunction && (activationFunction == prevActivationFunction);
+        }
+
+        prevActivationFunction = activationFunction;
+      }
+
+      const areUnitsOrdered = this.isArrayOrdered(layers[layer]);
+      const areStatesOrdered = areUnitsOrdered && this.isOrdered(layers[layer][0], layers[layer][layers[layer].length - 1], [`state`]);
+      const areActivationsOrdered = areUnitsOrdered && this.isOrdered(layers[layer][0], layers[layer][layers[layer].length - 1], [`activation`]);
+
+      console.log('Layer: ' + layer);
+      console.log('  Are units ordered: ' + areUnitsOrdered);
+      console.log('  Are states ordered: ' + areStatesOrdered);
+      console.log('  Are activations ordered: ' + areActivationsOrdered);
+      console.log('  Same activation function: ' + sameActivationFunction);
+
+
+      let isWholeActivationLayer = !!(prevActivationFunction & WHOLE_LAYER_ACTIVATION_KIND);
+
+      if (
+        sameActivationFunction
+        && areUnitsOrdered
+        && areStatesOrdered
+        && layer != 0
+        && !isWholeActivationLayer
+      ) {
+        const activationType = this.topology.activationFunction[layers[layer][0]];
+        const initialStatePosition = this.topology.heap.getVariable(`state`, layers[layer][0]);
+        const initialActivationPosition = this.topology.heap.getVariable(`activation`, layers[layer][0]); // TODO: tag output
+
+        activationFunction.body.addNode(
+          forLoop(`layer_${layer}_ix`, 0, layers[layer].length, (loopC) => {
+            let activation = pointer(sum(intNumber(initialActivationPosition.position), loopC));
+            let state = pointer(sum(intNumber(initialStatePosition.position), loopC));
+
+            return assign(activation, buildActivationFunction(state, activationType));
+          })
+        );
+
+        if (layer == outputLayer) {
+          for (let unit = 0; unit < layers[layer].length; unit++) {
+            this.outputs.push(this.topology.heap.getVariable(`activation`, layers[layer][unit]));
+          }
+        }
+      } else {
+        for (let unit = 0; unit < layers[layer].length; unit++) {
+          let activationJ: nodes.Variable;
+          switch (layer) {
+            case 0:
+              activationJ = this.topology.heap.getVariable('activation', layers[layer][unit]); // TODO: Tag, input
+              this.inputs.push(activationJ);
+              break;
+            case outputLayer:
+              activationJ = this.buildActivation(layers[layer][unit], layer);
+              this.outputs.push(activationJ);
+              break;
+            default:
+              this.buildActivation(layers[layer][unit], layer);
+          }
         }
       }
 
@@ -118,6 +208,7 @@ export class AST {
 
     this.targets.reverse();
   }
+
 
   private getFunctionBodyNode(functionName: string): nodes.BlockNode {
     // grab the function node

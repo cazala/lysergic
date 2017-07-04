@@ -40,10 +40,12 @@ export enum ActivationTypes {
   SHARPEN = WHOLE_LAYER_ACTIVATION_KIND | 5,
 
   // https://leonardoaraujosantos.gitbooks.io/artificial-inteligence/content/batch_norm_layer.html
+  // https://kratzert.github.io/2016/02/12/understanding-the-gradient-flow-through-the-batch-normalization-layer.html
+  // http://lasagne.readthedocs.io/en/latest/modules/layers/normalization.html
   BATCH_NORM = WHOLE_LAYER_ACTIVATION_KIND | 6
 }
 
-export function buildActivationFunction(state: Variable, type: ActivationTypes): ExpressionNode {
+export function buildActivationFunction(state: ExpressionNode, type: ActivationTypes): ExpressionNode {
   if (type & WHOLE_LAYER_ACTIVATION_KIND) return null;
   switch (type) {
     case ActivationTypes.LOGISTIC_SIGMOID:
@@ -104,6 +106,9 @@ export function buildActivationFunction(state: Variable, type: ActivationTypes):
 export function buildDerivativeFunction(state: Variable, activation: Variable, type: ActivationTypes): ExpressionNode {
   if ((type & WHOLE_LAYER_ACTIVATION_KIND) != 0) return null;
   switch (type) {
+    case ActivationTypes.IDENTITY:
+      return number(1);
+
     case ActivationTypes.LOGISTIC_SIGMOID:
       return mul(activation, sub(number(1), activation));
 

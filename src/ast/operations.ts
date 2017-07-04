@@ -11,7 +11,12 @@ import {
   UnaryOperator,
   ParametersNode,
   ParameterNode,
-  BlockNode
+  BlockNode,
+  ForLoopNode,
+  HeapPointer,
+  VariableDeclaration,
+  VariableReference,
+  IntNumberNode
 } from './nodes';
 
 export function heap(position: number) {
@@ -22,7 +27,11 @@ export function number(floatingNumber: number) {
   return new FloatNumberNode(floatingNumber);
 }
 
-export function assign(target: HeapReferenceNode, rhs: ExpressionNode) {
+export function intNumber(floatingNumber: number) {
+  return new IntNumberNode(floatingNumber);
+}
+
+export function assign(target: HeapReferenceNode | HeapPointer, rhs: ExpressionNode) {
   return binaryOp(target, '=', rhs);
 }
 
@@ -177,4 +186,40 @@ export function document(...args: ExpressionNode[]) {
     }
   }
   return node;
+}
+
+export function pointer(ptr: ExpressionNode): HeapPointer {
+  let a = new HeapPointer();
+  a.position = ptr;
+  return a;
+}
+
+export function floatVariable(name: string, value: number): VariableDeclaration {
+  let a = new VariableDeclaration(name, 'float', value);
+  return a;
+}
+
+export function integerVariable(name: string, value: number): VariableDeclaration {
+  let a = new VariableDeclaration(name, 'int', value);
+  return a;
+}
+
+export function block(...ops: ExpressionNode[]): BlockNode {
+  let r = new BlockNode();
+  r.addNode(ops);
+  return r;
+}
+
+export function forLoop(variableName: string, from: number, to: number, fun: (loopc: VariableReference) => ExpressionNode): BlockNode {
+  let variable = integerVariable(variableName, 0);
+  let loop = new ForLoopNode();
+
+  loop.from = from;
+  loop.to = to;
+
+  loop.var = new VariableReference(variable);
+
+  loop.expression = fun(loop.var);
+
+  return block(variable, loop);
 }
