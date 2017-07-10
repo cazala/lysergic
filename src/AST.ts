@@ -1,12 +1,18 @@
 import nodes = require("./ast/nodes");
-import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max, assignSub } from "./ast/operations";
-import { buildActivationFunction, buildDerivativeFunction, ActivationTypes } from "./ast/activations";
+import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max, assignSub, conditional, equal } from "./ast/operations";
+import { buildActivationFunction, buildDerivativeFunction, ActivationTypes, WHOLE_LAYER_ACTIVATION_KIND } from "./ast/activations";
 import { Topology } from "./Topology";
 
 export { nodes };
 
 export interface IASTOptions {
   topology: Topology;
+}
+
+interface ActivationBucket {
+  units: number[];
+  type: ActivationTypes;
+  layer: number;
 }
 
 export class AST {
@@ -48,12 +54,16 @@ export class AST {
     this.document.addNode(propagationFunction);
 
     for (let layer = 0; layer < layers.length; layer++) {
+      // build state
       if (layer != 0) {
         for (let unit = 0; unit < layers[layer].length; unit++) {
-          this.buildComputeState(layers[layer][unit], layer);
+          if (this.topology.activationFunction[layers[layer][unit]] !== ActivationTypes.MAX_POOLING) {
+            this.buildComputeState(layers[layer][unit], layer);
+          }
         }
       }
 
+      // build activation
       for (let unit = 0; unit < layers[layer].length; unit++) {
         let activationJ: nodes.Variable;
         switch (layer) {
@@ -70,6 +80,27 @@ export class AST {
         }
       }
 
+      // build whole layer activation
+      let buckets: ActivationBucket[] = [];
+      for (let unitIndex = 0; unitIndex < layers[layer].length; unitIndex++) {
+        const unit = layers[layer][unitIndex];
+        const type = this.topology.activationFunction[unit];
+        if (type & WHOLE_LAYER_ACTIVATION_KIND) {
+          let bucket = buckets.find(bucket => bucket.type === type);
+          if (bucket == null) {
+            bucket = {
+              units: [],
+              type,
+              layer
+            };
+            buckets.push(bucket);
+          }
+          bucket.units.push(unit);
+        }
+      }
+      buckets.forEach(bucket => this.buildWholeLayerActivation(bucket));
+
+      // build activation derivative
       for (let unit = 0; unit < layers[layer].length; unit++) {
         switch (layer) {
           case 0:
@@ -79,37 +110,27 @@ export class AST {
         }
       }
 
-      // SOFTMAX COMPUTATION
-      let softmaxUnits = [];
-
-      for (let unit = 0; unit < layers[layer].length; unit++) {
-        const type = this.topology.activationFunction[layers[layer][unit]];
-
-        if (type == ActivationTypes.SOFTMAX) {
-          softmaxUnits.push(layers[layer][unit]);
-        }
-      }
-
-      if (softmaxUnits.length > 1) {
-        this.softmaxUnits(softmaxUnits, layer);
-      }
-
+      // build traces and extended elegibility traces
       for (let unit = 0; unit < layers[layer].length; unit++) {
         switch (layer) {
           case 0:
             break;
           default:
-            this.buildActivationTraces(layers[layer][unit], layer);
+            if (this.topology.activationFunction[layers[layer][unit]] !== ActivationTypes.MAX_POOLING) {
+              this.buildActivationTraces(layers[layer][unit], layer);
+            }
         }
       }
     }
 
+    // build propagation from environment
     for (let unit = layers[outputLayer].length - 1; unit >= 0; unit--) {
       let targetJ = this.topology.heap.setVariable(`target`, unit, 0);
       this.targets.push(targetJ);
       this.buildPropagation(layers[outputLayer][unit], outputLayer, targetJ);
     }
 
+    // build propagation from error responsibility
     for (let layer = layers.length - 2; layer > 0; layer--) {
       for (let unit = layers[layer].length - 1; unit >= 0; unit--) {
         this.buildPropagation(layers[layer][unit], layer);
@@ -138,8 +159,6 @@ export class AST {
 
     // helper to add a statement to the unit node
     const statement = (node: nodes.ExpressionNode) => blockNode.addNode(node);
-
-
 
     /*====================================================================================================================
 
@@ -288,84 +307,108 @@ export class AST {
     }
   }
 
-  private softmaxUnits(units: number[], layerJ: number) {
+  private buildWholeLayerActivation(bucket: ActivationBucket) {
+
+    const units = bucket.units;
+    const type = bucket.type;
+    const layerJ = bucket.layer;
+
     const layerNode = this.getFunctionBodyNode('activate');
-
     const blockNode = new nodes.BlockNode();
-    blockNode.name = `Softmax ${layerJ}`;
-
+    blockNode.name = `Whole Layer Activation (${type}) ${layerJ}`;
     layerNode.addNode(blockNode);
 
     // helper to add a statement to the unit node
     const statement = (node: nodes.ExpressionNode) => blockNode.addNode(node);
 
-    // --------- VARS ---------
-
-    const activations: nodes.Variable[] = units.map($ => this.topology.heap.getVariable(`activation`, $));
-    const derivatives: nodes.Variable[] = units.map($ => this.topology.heap.getVariable(`derivative`, $));
-    const states: nodes.Variable[] = units.map($ => this.topology.heap.getVariable(`state`, $));
-
-    const maximum = this.topology.heap.setVariable(`softmaxMaximum`, layerJ, 0);
-    const denominator = this.topology.heap.setVariable(`softmaxDenominator`, layerJ, 0);
-    const nominators: nodes.Variable[] = [];
-
-    units.forEach((unit, i) => {
-      const nominator = this.topology.heap.setVariable(`softmaxNominators`, layerJ, unit, 0);
-      nominators.push(nominator);
-    });
-
-    // --------- IMPL ---------
-
-    // Activation
-    statement(assign(maximum, number(0)));
-    statement(assign(denominator, number(0)));
-
-    // Find the maximum activation value
-    // Snyman, Jan. Practical mathematical optimization: an introduction to basic optimization theory and
-    // classical and new gradient-based algorithms. Vol. 97. Springer Science & Business Media, 2005.
-    states.forEach($ => {
-      statement(assign(maximum, max(maximum, $)));
-    });
-
-    // maximum = max(activations)
-
-    // activation(i)' = (activation(i) - maximum)^E
-    states.forEach(($, i) => {
-      statement(assign(activations[i], exp(sub($, maximum))));
-    });
-
-    // denominator = Σ activation'
-    activations.forEach($ => statement(assignSum(denominator, $)));
-
-    // activation(i) = activation(i) / denominator
-    activations.forEach($ => {
-      statement(assign($, div($, denominator)));
-    });
-
-    // derivative(j) = activation(i) * (1 - activation(i)) - knockner(j, i) * activation(j)^2
-    states.forEach(($pi, $i) => {
-      statement(assign(derivatives[$i], mul($pi, sub(number(1), $pi))));
-
-      states.forEach(($pj, $j) => {
-        if ($i !== $j) {
-          statement(assignSub(derivatives[$i], mul($pj, $pi)));
-        }
-      });
-    });
-
-    // outdw[j] = 1
-
-    /*
-      for (var i = 0; i < X; i++) {
-        var sum = outw[i] * (1 - outw[i]) * outdw[i]
-
-        for (var j = 0; j < X; j++) {
-            if (i !== j)  sum -= outw[j] * outw[i] * outdw[j]
-        }
-
-        inpdw[i] = sum
+    switch (type) {
+      case ActivationTypes.MAX_POOLING: {
+        units.forEach(unit => {
+          const inputs = this.topology.inputsOf[unit];
+          const maximum = this.topology.heap.getVariable('activation', unit);
+          const activations = inputs.map(input => this.topology.heap.getVariable(`activation`, input));
+          activations.forEach((activation, index) => {
+            statement(assign(maximum, index === 0 ? activation : max(maximum, activation)));
+          });
+          inputs.forEach(input => {
+            const activation = this.topology.heap.getVariable(`activation`, input);
+            const weight = this.topology.heap.getVariable(`weight`, unit, input);
+            const derivative = this.topology.heap.getVariable(`derivative`, input);
+            statement(assign(weight, conditional(equal(activation, maximum), number(1), number(0))));
+            statement(assign(derivative, conditional(equal(activation, maximum), number(1), number(0))));
+          });
+        });
+        break;
       }
-    */
+      case ActivationTypes.SOFTMAX: {
+
+        const activations: nodes.Variable[] = units.map(unit => this.topology.heap.getVariable(`activation`, unit));
+        const derivatives: nodes.Variable[] = units.map(unit => this.topology.heap.getVariable(`derivative`, unit));
+        const states: nodes.Variable[] = units.map(unit => this.topology.heap.getVariable(`state`, unit));
+
+        const maximum = this.topology.heap.setVariable(`softmaxMaximum`, layerJ, 0);
+        const denominator = this.topology.heap.setVariable(`softmaxDenominator`, layerJ, 0);
+        const nominators: nodes.Variable[] = [];
+
+        units.forEach((unit, i) => {
+          const nominator = this.topology.heap.setVariable(`softmaxNominators`, layerJ, unit, 0);
+          nominators.push(nominator);
+        });
+
+        /*====================================================================================================================
+          Find the maximum activation value
+          Snyman, Jan. Practical mathematical optimization: an introduction to basic optimization theory and
+          classical and new gradient-based algorithms. Vol. 97. Springer Science & Business Media, 2005.
+
+          outdw[j] = 1
+
+          for (var i = 0; i < X; i++) {
+            var sum = outw[i] * (1 - outw[i]) * outdw[i]
+
+            for (var j = 0; j < X; j++) {
+                if (i !== j)  sum -= outw[j] * outw[i] * outdw[j]
+            }
+
+            inpdw[i] = sum
+          }
+        ====================================================================================================================*/
+
+        statement(assign(maximum, number(0)));
+        statement(assign(denominator, number(0)));
+
+        // maximum = max(activations)
+        states.forEach(state => {
+          statement(assign(maximum, max(maximum, state)));
+        });
+
+        // activation(i)' = (activation(i) - maximum)^E
+        states.forEach((state, i) => {
+          statement(assign(activations[i], exp(sub(state, maximum))));
+        });
+
+        // denominator = Σ activation'
+        activations.forEach(activation => statement(assignSum(denominator, activation)));
+
+        // activation(i) = activation(i) / denominator
+        activations.forEach(activation => {
+          statement(assign(activation, div(activation, denominator)));
+        });
+
+        // derivative(j) = activation(i) * (1 - activation(i)) - knockner(j, i) * activation(j)^2
+        states.forEach((state, i) => {
+          statement(assign(derivatives[i], mul(state, sub(number(1), state))));
+
+          states.forEach((state, j) => {
+            if (i !== j) {
+              statement(assignSub(derivatives[i], mul(state, state)));
+            }
+          });
+        });
+
+        break;
+      }
+      default:
+    }
   }
 
 
@@ -375,7 +418,7 @@ export class AST {
     const layerNode = this.getFunctionBodyNode(targetFunction);
 
     const blockNode = new nodes.BlockNode();
-    blockNode.name = `ActivationState ${layerJ}:${j}`;
+    blockNode.name = `State ${layerJ}:${j}`;
 
     layerNode.addNode(blockNode);
 
@@ -383,11 +426,11 @@ export class AST {
     const statement = (node: nodes.ExpressionNode) => blockNode.addNode(node);
 
     /*====================================================================================================================
-
+ 
     Eq. 15: compute state of j
-
+ 
     s[j] = g[j][j] * w[j][j] * s[j] + Σ(inputSet[j], i => g[j][i] * w[j][i] * y[i]);
-
+ 
     ====================================================================================================================*/
     let i, h;
 
@@ -459,8 +502,7 @@ export class AST {
     return activationJ;
   }
 
-  private buildPropagation(j: number, layerJ: number, targetJ?: nodes.Variable) {
-    const topology = this.topology;
+  private buildPropagation(j: number, layerJ: number, targetJ?: nodes.Variable): void {
 
     const layerNode = this.getFunctionBodyNode('propagate');
 
@@ -475,8 +517,8 @@ export class AST {
     // step 1: compute error responsibility (δ) for j
 
     let i, k, h, g, l, a;
-    let hasProjectedError = topology.projectionSet[j].length > 0;
-    const hasGatedError = topology.gateSet[j].length > 0;
+    let hasProjectedError = this.topology.projectionSet[j].length > 0;
+    const hasGatedError = this.topology.gateSet[j].length > 0;
 
     /*====================================================================================================================
 
@@ -504,10 +546,10 @@ export class AST {
       if (hasProjectedError) {
         statement(assign(projectedErrorResponsibilityJ, number(0)));
       }
-      for (h = 0; h < topology.projectionSet[j].length; h++) {
-        k = topology.projectionSet[j][h];
+      for (h = 0; h < this.topology.projectionSet[j].length; h++) {
+        k = this.topology.projectionSet[j][h];
         const errorResponsibilityK = this.topology.heap.getVariable(`errorResponsibility`, k);
-        const isGated = topology.gates.some(gate => gate.to === k && gate.from === j);
+        const isGated = this.topology.gates.some(gate => gate.to === k && gate.from === j);
         if (isGated) {
           const weightKJ = this.topology.heap.getVariable(`weight`, k, j);
           const gainKJ = this.topology.heap.getVariable(`gain`, k, j);
@@ -538,9 +580,9 @@ export class AST {
       if (hasGatedError) {
         statement(assignMul(gatedErrorResponsibilityJ, number(0)));
       }
-      for (h = 0; h < topology.gateSet[j].length; h++) {
-        k = topology.gateSet[j][h];
-        const isSelfConnectedK = topology.connections.some(connection => connection.to === k && connection.from === k);
+      for (h = 0; h < this.topology.gateSet[j].length; h++) {
+        k = this.topology.gateSet[j][h];
+        const isSelfConnectedK = this.topology.connections.some(connection => connection.to === k && connection.from === k);
         const bigParenthesisTermResult = this.topology.heap.setVariable('bigParenthesisTermResult', null);
 
         let keepBigParenthesisTerm = false;
@@ -553,8 +595,8 @@ export class AST {
         } else {
           initializeBigParenthesisTerm = true;
         }
-        for (l = 0; l < topology.inputsOfGatedBy[k][j].length; l++) {
-          a = topology.inputsOfGatedBy[k][j][l];
+        for (l = 0; l < this.topology.inputsOfGatedBy[k][j].length; l++) {
+          a = this.topology.inputsOfGatedBy[k][j][l];
           if (a !== k) {
             if (initializeBigParenthesisTerm) {
               statement(assign(bigParenthesisTermResult, number(0)));
@@ -592,6 +634,11 @@ export class AST {
       }
     }
 
+    // MaxPool doesn't update weights
+    if (this.topology.activationFunction[j] === ActivationTypes.MAX_POOLING) {
+      return;
+    }
+
     /*====================================================================================================================
 
     Eq. 24: compute error responsibility for j
@@ -603,15 +650,15 @@ export class AST {
     w[j][i] += Δw
 
     ====================================================================================================================*/
-    for (h = 0; h < topology.inputSet[j].length; h++) {
+    for (h = 0; h < this.topology.inputSet[j].length; h++) {
       if (hasProjectedError && hasGatedError) {
-        i = topology.inputSet[j][h];
+        i = this.topology.inputSet[j][h];
         const Δw = this.topology.heap.setVariable(`Δw`, null);
         const projectedErrorResponsibilityJ = this.topology.heap.getVariable(`projectedErrorResponsibility`, j);
         const elegibilityTraceJI = this.topology.heap.getVariable(`elegibilityTrace`, j, i);
         statement(assign(Δw, mul(projectedErrorResponsibilityJ, elegibilityTraceJI)));
-        for (g = 0; g < topology.gateSet[j].length; g++) {
-          k = topology.gateSet[j][g];
+        for (g = 0; g < this.topology.gateSet[j].length; g++) {
+          k = this.topology.gateSet[j][g];
           const errorResponsibilityK = this.topology.heap.getVariable(`errorResponsibility`, k);
           const extendedElegibilityTraceJIK = this.topology.heap.getVariable(`extendedElegibilityTrace`, j, i, k);
           statement(assignSum(Δw, mul(errorResponsibilityK, extendedElegibilityTraceJIK)));
@@ -621,18 +668,18 @@ export class AST {
         const weightJI = this.topology.heap.getVariable(`weight`, j, i);
         statement(assignSum(weightJI, Δw));
       } else if (hasProjectedError) {
-        i = topology.inputSet[j][h];
+        i = this.topology.inputSet[j][h];
         const weightJI = this.topology.heap.getVariable(`weight`, j, i);
         const projectedErrorResponsibilityJ = this.topology.heap.getVariable(`projectedErrorResponsibility`, j);
         const elegibilityTraceJI = this.topology.heap.getVariable(`elegibilityTrace`, j, i);
         const learningRate = this.topology.heap.getVariable('learningRate');
         statement(assignSum(weightJI, mul(mul(projectedErrorResponsibilityJ, elegibilityTraceJI), learningRate)));
       } else if (hasGatedError) {
-        i = topology.inputSet[j][h];
+        i = this.topology.inputSet[j][h];
         const Δw = this.topology.heap.setVariable(`Δw`, null);
         statement(assign(Δw, number(0)));
-        for (g = 0; g < topology.gateSet[j].length; g++) {
-          k = topology.gateSet[j][g];
+        for (g = 0; g < this.topology.gateSet[j].length; g++) {
+          k = this.topology.gateSet[j][g];
           const errorResponsibilityK = this.topology.heap.getVariable(`errorResponsibility`, k);
           const extendedElegibilityTraceJIK = this.topology.heap.getVariable(`extendedElegibilityTrace`, j, i, k);
           statement(assignSum(Δw, mul(errorResponsibilityK, extendedElegibilityTraceJIK)));
