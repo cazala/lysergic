@@ -50,7 +50,7 @@ export class AST {
   }
 
 
-  isOrdered(from: number, to: number, accessor: string[]): boolean {
+  isOrdered(from: number, to: number, accessor: (string | number)[]): boolean {
     let ordered = true;
     let prev: nodes.Variable = null;
     for (let i = from; i < to; i++) {
@@ -498,20 +498,64 @@ export class AST {
       statement(assign(stateJ, number(0)));
     }
 
-    for (h = 0; h < topology.inputSet[j].length; h++) {
-      i = topology.inputSet[j][h];
-      const isGated = topology.gates.some(gate => gate.from === i && gate.to === j);
-      if (isGated) {
-        const stateJ = this.topology.heap.getVariable(`state`, j);
-        const gainJI = this.topology.heap.getVariable(`gain`, j, i);
-        const weightJI = this.topology.heap.getVariable(`weight`, j, i);
-        const activationI = this.topology.heap.getVariable(`activation`, i);
-        statement(assignSum(stateJ, mul(mul(gainJI, weightJI), activationI)));
-      } else {
-        const stateJ = this.topology.heap.getVariable(`state`, j);
-        const weightJI = this.topology.heap.getVariable(`weight`, j, i);
-        const activationI = this.topology.heap.getVariable(`activation`, i);
-        statement(assignSum(stateJ, mul(weightJI, activationI)));
+    const isEveryInputGated = topology.inputSet[j].every($ => topology.gates.some(gate => gate.from === $ && gate.to === j));
+    const isEveryInputNotGated = topology.inputSet[j].every($ => !topology.gates.some(gate => gate.from === $ && gate.to === j));
+
+    const areWeightsOrdered = this.isOrdered(topology.inputSet[j][0], topology.inputSet[j][topology.inputSet[j].length - 1], [`weight`, j]);
+    const areGainsOrdered = isEveryInputGated && this.isOrdered(topology.inputSet[j][0], topology.inputSet[j][topology.inputSet[j].length - 1], [`gain`, j]);
+    const areActivationsOrdered = this.isOrdered(topology.inputSet[j][0], topology.inputSet[j][topology.inputSet[j].length - 1], [`activation`]);
+
+
+
+
+    if (isEveryInputGated && areWeightsOrdered && areGainsOrdered && areActivationsOrdered) {
+      i = topology.inputSet[j][0];
+      const stateJ = this.topology.heap.getVariable(`state`, j);
+      const gainJI = this.topology.heap.getVariable(`gain`, j, i);
+      const weightJI = this.topology.heap.getVariable(`weight`, j, i);
+      const activationI = this.topology.heap.getVariable(`activation`, i);
+
+
+      statement(
+        forLoop(`state_${j}_ix`, 0, topology.inputSet[j].length, (loopC) => {
+          let gain = pointer(sum(intNumber(gainJI.position), loopC));
+          let weight = pointer(sum(intNumber(weightJI.position), loopC));
+          let activation = pointer(sum(intNumber(activationI.position), loopC));
+
+          return assignSum(stateJ, mul(mul(gain, weight), activation));
+        })
+      );
+    } else if (isEveryInputNotGated && areWeightsOrdered && areActivationsOrdered) {
+      i = topology.inputSet[j][0];
+      const stateJ = this.topology.heap.getVariable(`state`, j);
+      const weightJI = this.topology.heap.getVariable(`weight`, j, i);
+      const activationI = this.topology.heap.getVariable(`activation`, i);
+
+      statement(
+        forLoop(`state_${j}_ix`, 0, topology.inputSet[j].length, (loopC) => {
+          let weight = pointer(sum(intNumber(weightJI.position), loopC));
+          let activation = pointer(sum(intNumber(activationI.position), loopC));
+
+          return assignSum(stateJ, mul(weight, activation));
+        })
+      );
+    } else {
+      console.log({ j, isEveryInputGated, isEveryInputNotGated, areWeightsOrdered, areGainsOrdered, areActivationsOrdered });
+      for (h = 0; h < topology.inputSet[j].length; h++) {
+        i = topology.inputSet[j][h];
+        const isGated = topology.gates.some(gate => gate.from === i && gate.to === j);
+        if (isGated) {
+          const stateJ = this.topology.heap.getVariable(`state`, j);
+          const gainJI = this.topology.heap.getVariable(`gain`, j, i);
+          const weightJI = this.topology.heap.getVariable(`weight`, j, i);
+          const activationI = this.topology.heap.getVariable(`activation`, i);
+          statement(assignSum(stateJ, mul(mul(gainJI, weightJI), activationI)));
+        } else {
+          const stateJ = this.topology.heap.getVariable(`state`, j);
+          const weightJI = this.topology.heap.getVariable(`weight`, j, i);
+          const activationI = this.topology.heap.getVariable(`activation`, i);
+          statement(assignSum(stateJ, mul(weightJI, activationI)));
+        }
       }
     }
 

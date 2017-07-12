@@ -21,6 +21,7 @@ export enum LysergicStatus {
 export interface ILysergicOptions {
   bias?: boolean;
   learningRate?: number;
+  heap?: Heap.Heap;
 }
 
 export enum StatusTypes {
@@ -56,7 +57,7 @@ export default class Lysergic {
   status: LysergicStatus = LysergicStatus.UNLOCKED;
 
   constructor(public options: ILysergicOptions = {}) {
-    this.heap = new Heap.Heap({});
+    this.heap = options.heap || new Heap.Heap({});
 
     this.learningRate = options.learningRate || 0.1;
 
@@ -197,15 +198,17 @@ export default class Lysergic {
 
   static fromJSON(json: string | object) {
     const data = typeof json === 'string' ? JSON.parse(json) : json;
-    const compiler = new Lysergic();
-    compiler.learningRate = data.learningRate;
 
     const variables = data.variables;
 
+    const heap = new Heap.Heap({});
+
     Object.keys(variables).map($ => {
-      compiler.heap.setVariable($, variables[$]);
+      heap.setVariable($, variables[$]);
     });
 
+    const compiler = new Lysergic({ heap });
+    compiler.learningRate = data.learningRate;
     compiler.topology.biasUnit = data.biasUnit;
     compiler.topology.inputsOf = data.inputsOf;
     compiler.topology.projectedBy = data.projectedBy;
