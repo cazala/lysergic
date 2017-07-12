@@ -3,7 +3,7 @@
 // https://nn.readthedocs.io/en/rtd/transfer/
 // https://math.stackexchange.com/questions/945871/derivative-of-softmax-loss-function
 
-import { mul, number, div, sum, exp, neg, sub, conditional, gt, ln, abs, pow, max } from "./operations";
+import { mul, number, div, sum, exp, neg, sub, conditional, gt, ln, abs, pow, max, gte } from "./operations";
 import { ExpressionNode, Variable } from "./nodes";
 
 export const WHOLE_LAYER_ACTIVATION_KIND = 128;
@@ -119,10 +119,10 @@ export function buildDerivativeFunction(state: Variable, activation: Variable, t
       return number(0);
 
     case ActivationTypes.RELU_PLUSONE:
-      return conditional(gt(state, number(0)), number(1), number(0));
+      return conditional(gte(state, number(0)), number(1), number(0));
 
     case ActivationTypes.RELU:
-      return conditional(gt(state, number(0)), number(1), number(0));
+      return conditional(gte(state, number(0)), number(1), number(0));
 
     case ActivationTypes.SOFTPLUS:
       return div(number(1), sum(number(1), exp(neg(state))));

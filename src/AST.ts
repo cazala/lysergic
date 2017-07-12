@@ -1,5 +1,5 @@
 import nodes = require("./ast/nodes");
-import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max, assignSub, conditional, equal } from "./ast/operations";
+import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max, assignSub, krnonecker } from "./ast/operations";
 import { buildActivationFunction, buildDerivativeFunction, ActivationTypes, WHOLE_LAYER_ACTIVATION_KIND } from "./ast/activations";
 import { Topology } from "./Topology";
 
@@ -383,8 +383,8 @@ export class AST {
             const activation = this.topology.heap.getVariable(`activation`, input);
             const weight = this.topology.heap.getVariable(`weight`, unit, input);
             const derivative = this.topology.heap.getVariable(`derivative`, input);
-            statement(assign(weight, conditional(equal(activation, maximum), number(1), number(0))));
-            statement(assign(derivative, conditional(equal(activation, maximum), number(1), number(0))));
+            statement(assign(weight, krnonecker(activation, maximum)));
+            statement(assign(derivative, krnonecker(activation, maximum)));
           });
         });
         break;
