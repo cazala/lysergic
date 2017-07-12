@@ -57,10 +57,8 @@ export default class Lysergic {
   status: LysergicStatus = LysergicStatus.UNLOCKED;
 
   constructor(public options: ILysergicOptions = {}) {
-    this.heap = options.heap || new Heap.Heap({});
-
+    this.heap = options.heap || new Heap.Heap();
     this.learningRate = options.learningRate || 0.1;
-
     this.topology = new Topology.Topology({ heap: this.heap, bias: options.bias });
     this.ast = new AST.AST({ topology: this.topology });
   }
@@ -106,8 +104,9 @@ export default class Lysergic {
   }
 
   getAST(): nodes.DocumentNode {
-    if (this.status == LysergicStatus.UNLOCKED)
+    if (this.status == LysergicStatus.UNLOCKED) {
       throw new Error('You need to build the network first');
+    }
 
     return this.ast.getDocument();
   }

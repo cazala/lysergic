@@ -17,7 +17,7 @@ export class Heap {
   buffer: ArrayBuffer = null;
   memory: Float64Array = null;
 
-  constructor(public options: IHeapOptions) { }
+  constructor(public options: IHeapOptions = {}) { }
 
   allocationCount: number = 0;
   private variables: Dictionary<Variable> = {};
