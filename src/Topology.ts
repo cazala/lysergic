@@ -22,7 +22,6 @@ export interface ITopologyUnitOptions {
   bias?: boolean;
   l1?: number;
   l2?: number;
-  momentum?: number;
   parameters?: number[];
 }
 
@@ -31,7 +30,7 @@ export class Topology {
   heap: Heap = null;
   biasUnit: number = null;
   inputsOf: number[][] = [];
-  unitParameters: { l2: number; l1: number; momentum: number; parameters: number[]; }[] = [];
+  unitParameters: { l2: number; l1: number; parameters: number[]; }[] = [];
   projectedBy: number[][] = [];
   gatersOf: number[][] = [];
   gatedBy: number[][] = [];
@@ -106,7 +105,6 @@ export class Topology {
       activationFunction = ActivationTypes.LOGISTIC_SIGMOID,
       l1 = 0,
       l2 = 0,
-      momentum = 0,
       parameters = []
     } = options;
 
@@ -123,7 +121,6 @@ export class Topology {
     this.unitParameters[unit] = {
       l1,
       l2,
-      momentum,
       parameters
     };
 

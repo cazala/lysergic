@@ -701,6 +701,7 @@ export class AST {
 
 
     const learningRate = this.topology.heap.getVariable('learningRate');
+    const momentum = this.topology.heap.getVariable('momentum');
 
     // https://jamesmccaffrey.wordpress.com/2017/06/06/neural-network-momentum/
     for (let h = 0; h < this.topology.inputSet[j].length; h++) {
@@ -709,9 +710,7 @@ export class AST {
       const weightJI = this.topology.heap.getVariable(`weight`, j, i);
 
       // https://jamesmccaffrey.wordpress.com/2017/06/27/implementing-neural-network-l1-regularization/
-      if (this.topology.unitParameters[j].momentum) {
-        statement(assignSum(weightJI, mul(weightJI, number(this.topology.unitParameters[j].momentum))));
-      }
+      statement(assignSum(weightJI, mul(weightJI, momentum)));
     }
 
     for (let h = 0; h < this.topology.inputSet[j].length; h++) {

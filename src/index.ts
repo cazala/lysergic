@@ -21,6 +21,7 @@ export enum LysergicStatus {
 export interface ILysergicOptions {
   bias?: boolean;
   learningRate?: number;
+  momentum?: number;
   heap?: Heap.Heap;
 }
 
@@ -49,6 +50,18 @@ export default class Lysergic {
     this.heap.setVariable(`learningRate`, lr);
   }
 
+  get momentum(): number {
+    return this.heap.getVariable(`momentum`).initialValue;
+  }
+
+  set momentum(val: number) {
+    let lr = +val;
+    if (isNaN(lr) || lr <= 0) {
+      throw new Error('momentum must be a positive number');
+    }
+    this.heap.setVariable(`momentum`, lr);
+  }
+
   engineStatus: StatusTypes = StatusTypes.IDLE;
 
   topology: Topology.Topology = null;
@@ -59,6 +72,7 @@ export default class Lysergic {
   constructor(public options: ILysergicOptions = {}) {
     this.heap = options.heap || new Heap.Heap();
     this.learningRate = options.learningRate || 0.1;
+    this.momentum = options.momentum || 0;
     this.topology = new Topology.Topology({ heap: this.heap, bias: options.bias });
     this.ast = new AST.AST({ topology: this.topology });
   }
