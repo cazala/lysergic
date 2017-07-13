@@ -123,6 +123,10 @@ export function exp(rhs: ExpressionNode) {
   return unaryOp('exp', rhs);
 }
 
+export function sign(rhs: ExpressionNode) {
+  return unaryOp('sign', rhs);
+}
+
 export function ln(rhs: ExpressionNode) {
   return unaryOp('ln', rhs);
 }

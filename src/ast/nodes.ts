@@ -1,7 +1,7 @@
 import { childrenRef, indent } from './helpers';
 
 export type BinaryOperator = '+' | '-' | '/' | '*' | '=' | '*=' | '/=' | '+=' | '-=' | '^' | '>' | '<' | '>=' | '<=' | '==' | 'max' | 'kronecker';
-export type UnaryOperator = '-' | 'exp' | 'rand' | 'abs' | 'sqrt' | 'ln';
+export type UnaryOperator = '-' | 'exp' | 'rand' | 'abs' | 'sqrt' | 'ln' | 'sign';
 
 export abstract class Node {
   children: Node[] = [];
