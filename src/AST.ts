@@ -1,5 +1,5 @@
 import nodes = require("./ast/nodes");
-import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max, assignSub, krnonecker } from "./ast/operations";
+import { func, assignMul, mul, assign, number, assignSum, div, sum, exp, sub, document, max, assignSub, krnonecker, sign } from "./ast/operations";
 import { buildActivationFunction, buildDerivativeFunction, ActivationTypes, WHOLE_LAYER_ACTIVATION_KIND } from "./ast/activations";
 import { Topology } from "./Topology";
 
@@ -565,7 +565,6 @@ export class AST {
 
     // step 1: compute error responsibility (δ) for j
 
-    let i, k, h, g, l, a;
     let hasProjectedError = this.topology.projectionSet[j].length > 0;
     const hasGatedError = this.topology.gateSet[j].length > 0;
 
@@ -595,8 +594,8 @@ export class AST {
       if (hasProjectedError) {
         statement(assign(projectedErrorResponsibilityJ, number(0)));
       }
-      for (h = 0; h < this.topology.projectionSet[j].length; h++) {
-        k = this.topology.projectionSet[j][h];
+      for (let h = 0; h < this.topology.projectionSet[j].length; h++) {
+        const k = this.topology.projectionSet[j][h];
         const errorResponsibilityK = this.topology.heap.getVariable(`errorResponsibility`, k);
         const isGated = this.topology.gates.some(gate => gate.to === k && gate.from === j);
         if (isGated) {
@@ -629,8 +628,8 @@ export class AST {
       if (hasGatedError) {
         statement(assignMul(gatedErrorResponsibilityJ, number(0)));
       }
-      for (h = 0; h < this.topology.gateSet[j].length; h++) {
-        k = this.topology.gateSet[j][h];
+      for (let h = 0; h < this.topology.gateSet[j].length; h++) {
+        const k = this.topology.gateSet[j][h];
         const isSelfConnectedK = this.topology.connections.some(connection => connection.to === k && connection.from === k);
         const bigParenthesisTermResult = this.topology.heap.setVariable('bigParenthesisTermResult', null);
 
@@ -644,8 +643,8 @@ export class AST {
         } else {
           initializeBigParenthesisTerm = true;
         }
-        for (l = 0; l < this.topology.inputsOfGatedBy[k][j].length; l++) {
-          a = this.topology.inputsOfGatedBy[k][j][l];
+        for (let l = 0; l < this.topology.inputsOfGatedBy[k][j].length; l++) {
+          const a = this.topology.inputsOfGatedBy[k][j][l];
           if (a !== k) {
             if (initializeBigParenthesisTerm) {
               statement(assign(bigParenthesisTermResult, number(0)));
@@ -699,45 +698,75 @@ export class AST {
     w[j][i] += Δw
 
     ====================================================================================================================*/
-    for (h = 0; h < this.topology.inputSet[j].length; h++) {
+
+
+    const learningRate = this.topology.heap.getVariable('learningRate');
+
+    // https://jamesmccaffrey.wordpress.com/2017/06/06/neural-network-momentum/
+    for (let h = 0; h < this.topology.inputSet[j].length; h++) {
+      const i = this.topology.inputSet[j][h];
+
+      const weightJI = this.topology.heap.getVariable(`weight`, j, i);
+
+      // https://jamesmccaffrey.wordpress.com/2017/06/27/implementing-neural-network-l1-regularization/
+      if (this.topology.unitParameters[j].momentum) {
+        statement(assignSum(weightJI, mul(weightJI, number(this.topology.unitParameters[j].momentum))));
+      }
+    }
+
+    for (let h = 0; h < this.topology.inputSet[j].length; h++) {
+      const i = this.topology.inputSet[j][h];
+
+      const Δw = this.topology.heap.getVariable(`gradient`, j, i);
+
       if (hasProjectedError && hasGatedError) {
-        i = this.topology.inputSet[j][h];
-        const Δw = this.topology.heap.setVariable(`Δw`, null);
+
         const projectedErrorResponsibilityJ = this.topology.heap.getVariable(`projectedErrorResponsibility`, j);
         const elegibilityTraceJI = this.topology.heap.getVariable(`elegibilityTrace`, j, i);
         statement(assign(Δw, mul(projectedErrorResponsibilityJ, elegibilityTraceJI)));
-        for (g = 0; g < this.topology.gateSet[j].length; g++) {
-          k = this.topology.gateSet[j][g];
+        for (let g = 0; g < this.topology.gateSet[j].length; g++) {
+          const k = this.topology.gateSet[j][g];
           const errorResponsibilityK = this.topology.heap.getVariable(`errorResponsibility`, k);
           const extendedElegibilityTraceJIK = this.topology.heap.getVariable(`extendedElegibilityTrace`, j, i, k);
           statement(assignSum(Δw, mul(errorResponsibilityK, extendedElegibilityTraceJIK)));
         }
-        const learningRate = this.topology.heap.getVariable('learningRate');
+
         statement(assignMul(Δw, learningRate));
-        const weightJI = this.topology.heap.getVariable(`weight`, j, i);
-        statement(assignSum(weightJI, Δw));
       } else if (hasProjectedError) {
-        i = this.topology.inputSet[j][h];
-        const weightJI = this.topology.heap.getVariable(`weight`, j, i);
         const projectedErrorResponsibilityJ = this.topology.heap.getVariable(`projectedErrorResponsibility`, j);
         const elegibilityTraceJI = this.topology.heap.getVariable(`elegibilityTrace`, j, i);
-        const learningRate = this.topology.heap.getVariable('learningRate');
-        statement(assignSum(weightJI, mul(mul(projectedErrorResponsibilityJ, elegibilityTraceJI), learningRate)));
+
+        statement(assign(Δw, mul(mul(projectedErrorResponsibilityJ, elegibilityTraceJI), learningRate)));
       } else if (hasGatedError) {
-        i = this.topology.inputSet[j][h];
-        const Δw = this.topology.heap.setVariable(`Δw`, null);
         statement(assign(Δw, number(0)));
-        for (g = 0; g < this.topology.gateSet[j].length; g++) {
-          k = this.topology.gateSet[j][g];
+        for (let g = 0; g < this.topology.gateSet[j].length; g++) {
+          const k = this.topology.gateSet[j][g];
           const errorResponsibilityK = this.topology.heap.getVariable(`errorResponsibility`, k);
           const extendedElegibilityTraceJIK = this.topology.heap.getVariable(`extendedElegibilityTrace`, j, i, k);
           statement(assignSum(Δw, mul(errorResponsibilityK, extendedElegibilityTraceJIK)));
         }
-        const learningRate = this.topology.heap.getVariable('learningRate');
+
         statement(assignMul(Δw, learningRate));
-        const weightJI = this.topology.heap.getVariable(`weight`, j, i);
-        statement(assignSum(weightJI, Δw));
       }
+    }
+
+    for (let h = 0; h < this.topology.inputSet[j].length; h++) {
+      const i = this.topology.inputSet[j][h];
+
+      const gradient = this.topology.heap.getVariable(`gradient`, j, i);
+      const weightJI = this.topology.heap.getVariable(`weight`, j, i);
+
+      // https://jamesmccaffrey.wordpress.com/2017/06/27/implementing-neural-network-l1-regularization/
+      if (this.topology.unitParameters[j].l1) {
+        statement(assignSum(weightJI, mul(sign(weightJI), number(this.topology.unitParameters[j].l1))));
+      }
+
+      // https://jamesmccaffrey.wordpress.com/2017/06/29/implementing-neural-network-l2-regularization/
+      if (this.topology.unitParameters[j].l2) {
+        statement(assignSub(weightJI, mul(weightJI, number(this.topology.unitParameters[j].l2))));
+      }
+
+      statement(assignSum(weightJI, gradient));
     }
   }
 

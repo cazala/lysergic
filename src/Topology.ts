@@ -20,6 +20,10 @@ export interface ITopologyOptions {
 export interface ITopologyUnitOptions {
   activationFunction?: ActivationTypes;
   bias?: boolean;
+  l1?: number;
+  l2?: number;
+  momentum?: number;
+  parameters?: number[];
 }
 
 export class Topology {
@@ -27,6 +31,7 @@ export class Topology {
   heap: Heap = null;
   biasUnit: number = null;
   inputsOf: number[][] = [];
+  unitParameters: { l2: number; l1: number; momentum: number; parameters: number[]; }[] = [];
   projectedBy: number[][] = [];
   gatersOf: number[][] = [];
   gatedBy: number[][] = [];
@@ -98,7 +103,11 @@ export class Topology {
   addUnit(options: ITopologyUnitOptions = {}): number {
     const {
       bias = true,
-      activationFunction = ActivationTypes.LOGISTIC_SIGMOID
+      activationFunction = ActivationTypes.LOGISTIC_SIGMOID,
+      l1 = 0,
+      l2 = 0,
+      momentum = 0,
+      parameters = []
     } = options;
 
     const unit = this.units++;
@@ -110,6 +119,14 @@ export class Topology {
     this.inputSet[unit] = [];
     this.projectionSet[unit] = [];
     this.gateSet[unit] = [];
+
+    this.unitParameters[unit] = {
+      l1,
+      l2,
+      momentum,
+      parameters
+    };
+
     this.activationFunction[unit] = activationFunction;
 
     this.heap.setVariable('state', unit, 0);
@@ -142,6 +159,7 @@ export class Topology {
 
     const isSelfConnection = (from === to);
     this.heap.setVariable('gain', to, from, 1); // ungated connections have a gain of 1 (eq. 14)
+    this.heap.setVariable('gradient', to, from, 0);
     this.heap.setVariable('weight', to, from, isSelfConnection ? 1 : weight); // self-connections have a fixed weight of 1 (this is explained in the text between eq. 14 and eq. 15)
     this.heap.setVariable('elegibilityTrace', to, from, 0);
 

@@ -190,7 +190,8 @@ export default class Lysergic {
       gates: this.topology.gates,
       units: this.topology.units,
       layers: this.topology.layers,
-      activationFunction: this.topology.activationFunction
+      activationFunction: this.topology.activationFunction,
+      unitParameters: this.topology.unitParameters
     });
     return asString ? stringified : JSON.parse(stringified);
   }
@@ -207,6 +208,7 @@ export default class Lysergic {
     });
 
     const compiler = new Lysergic({ heap });
+
     compiler.learningRate = data.learningRate;
     compiler.topology.biasUnit = data.biasUnit;
     compiler.topology.inputsOf = data.inputsOf;
@@ -222,6 +224,7 @@ export default class Lysergic {
     compiler.topology.layers = data.layers;
     compiler.topology.units = data.units;
     compiler.topology.activationFunction = data.activationFunction;
+    compiler.topology.unitParameters = data.unitParameters;
     return compiler;
   }
 
