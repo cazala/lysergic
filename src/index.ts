@@ -56,7 +56,7 @@ export default class Lysergic {
 
   set momentum(val: number) {
     let lr = +val;
-    if (isNaN(lr) || lr <= 0) {
+    if (isNaN(lr) || lr < 0) {
       throw new Error('momentum must be a positive number');
     }
     this.heap.setVariable(`momentum`, lr);
@@ -71,8 +71,14 @@ export default class Lysergic {
 
   constructor(public options: ILysergicOptions = {}) {
     this.heap = options.heap || new Heap.Heap();
-    this.learningRate = options.learningRate || 0.1;
-    this.momentum = options.momentum || 0;
+
+    const {
+      learningRate = 0.1,
+      momentum = 0
+    } = options;
+
+    this.learningRate = learningRate;
+    this.momentum = momentum;
     this.topology = new Topology.Topology({ heap: this.heap, bias: options.bias });
     this.ast = new AST.AST({ topology: this.topology });
   }
@@ -190,6 +196,7 @@ export default class Lysergic {
 
     const stringified = JSON.stringify({
       learningRate: this.learningRate,
+      momentum: this.momentum,
       variables,
       biasUnit: this.topology.biasUnit,
       inputsOf: this.topology.inputsOf,
@@ -224,6 +231,7 @@ export default class Lysergic {
     const compiler = new Lysergic({ heap });
 
     compiler.learningRate = data.learningRate;
+    compiler.momentum = data.momentum;
     compiler.topology.biasUnit = data.biasUnit;
     compiler.topology.inputsOf = data.inputsOf;
     compiler.topology.projectedBy = data.projectedBy;

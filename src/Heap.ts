@@ -27,6 +27,9 @@ export class Heap {
       this.variables[key] = new Variable(this.allocationCount++, key, value, tag);
     }
     this.variables[key].initialValue = value || 0;
+    if (this.memory) {
+      this.memory[this.variables[key].position] = this.variables[key].initialValue;
+    }
     return this.variables[key];
   }
 
@@ -52,6 +55,24 @@ export class Heap {
       throw new Error(variableKey + ' is not declared');
     }
     return variable;
+  }
+
+  getValue(key: string): number;
+  getValue(key: string, i: number): number;
+  getValue(key: string, i: number, j: number): number;
+  getValue(key: string, i: number, j: number, k: number): number;
+  getValue(key: string, ...indexes: number[]) {
+    const variableKey = key + indexes.map($ => `[${$}]`).join('');
+    let variable = this.variables[variableKey];
+    if (!variable) {
+      console.dir(this.variables);
+      throw new Error(variableKey + ' is not declared');
+    }
+
+    if (this.memory)
+      return this.memory[variable.position];
+
+    return variable.initialValue;
   }
 
   hasVariable(key: string): boolean;
